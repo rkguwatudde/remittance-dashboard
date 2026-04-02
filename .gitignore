@@ -1,0 +1,90 @@
+# Dependencies
+node_modules/
+
+# Build & Next.js
+.next/
+out/
+build/
+dist/
+.swc/
+
+# TypeScript incremental (project-wide)
+*.tsbuildinfo
+
+# Debug & logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Env & secrets (never commit)
+.env
+.env.*
+!.env*.example
+!.env.local.example
+
+# Vercel
+.vercel
+
+# Turbopack / tooling cache
+.turbo/
+.cache/
+
+# Test & coverage
+coverage/
+.nyc_output/
+*.lcov
+junit.xml
+
+# ESLint
+.eslintcache
+
+# Prettier
+.prettier-cache
+
+# TypeScript (incremental - optional; uncomment if you use composite projects)
+# *.tsbuildinfo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Optional: local scratch / notes (remove if you want these tracked)
+# .local/
+
+# Cursor / local AI (optional; uncomment if your team prefers not to track)
+# .cursor/
+
+# Playwright (if added later)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Sentry (if added)
+.sentryclirc
+
+# Storybook (if added)
+storybook-static/
+.out-storybook/

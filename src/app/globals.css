@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* —— BoraBond design tokens (ops / remittance console) —— */
+@theme {
+  /* Brand */
+  --color-primary: oklch(0.48 0.19 264);
+  --color-primary-foreground: oklch(0.99 0 0);
+  --color-primary-muted: oklch(0.48 0.19 264 / 0.12);
+
+  --color-accent: oklch(0.72 0.14 232);
+  --color-accent-foreground: oklch(0.22 0.04 264);
+
+  /* Surfaces */
+  --color-background: oklch(0.985 0.004 264);
+  --color-surface: oklch(1 0 0);
+  --color-surface-elevated: oklch(1 0 0);
+  --color-surface-muted: oklch(0.965 0.006 264);
+
+  --color-border: oklch(0.91 0.01 264);
+  --color-border-strong: oklch(0.84 0.02 264);
+
+  --color-foreground: oklch(0.22 0.03 264);
+  --color-muted-foreground: oklch(0.48 0.02 264);
+
+  /* Semantic (remittance / risk) */
+  --color-success: oklch(0.55 0.14 158);
+  --color-success-muted: oklch(0.55 0.14 158 / 0.14);
+  --color-warning: oklch(0.75 0.15 84);
+  --color-warning-muted: oklch(0.75 0.15 84 / 0.18);
+  --color-danger: oklch(0.55 0.2 25);
+  --color-danger-muted: oklch(0.55 0.2 25 / 0.12);
+  --color-info: oklch(0.55 0.14 250);
+  --color-info-muted: oklch(0.55 0.14 250 / 0.14);
+
+  /* Charts */
+  --color-chart-1: oklch(0.48 0.19 264);
+  --color-chart-2: oklch(0.72 0.14 232);
+  --color-chart-3: oklch(0.55 0.14 158);
+  --color-chart-4: oklch(0.75 0.15 84);
+  --color-chart-5: oklch(0.55 0.2 25);
+
+  /* Type */
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Radius & shadow */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  --shadow-card: 0 1px 0 oklch(0 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.06);
+  --shadow-floating: 0 12px 40px oklch(0 0 0 / 0.08);
+
+  /* Spacing scale (4px grid) — exposed for consistency */
+  --spacing-section: 2rem;
+}
+
+.dark {
+  --color-background: oklch(0.16 0.02 264);
+  --color-surface: oklch(0.2 0.022 264);
+  --color-surface-elevated: oklch(0.24 0.022 264);
+  --color-surface-muted: oklch(0.22 0.02 264);
+
+  --color-border: oklch(0.32 0.02 264);
+  --color-border-strong: oklch(0.4 0.02 264);
+
+  --color-foreground: oklch(0.96 0.01 264);
+  --color-muted-foreground: oklch(0.68 0.02 264);
+
+  --color-primary-muted: oklch(0.62 0.16 264 / 0.18);
+  --shadow-card: 0 1px 0 oklch(0 0 0 / 0.2), 0 1px 3px oklch(0 0 0 / 0.35);
+  --shadow-floating: 0 16px 48px oklch(0 0 0 / 0.45);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans text-[15px] leading-normal;
+  }
+}
+
+@utility focus-ring {
+  @apply outline-none ring-2 ring-primary/25 ring-offset-2 ring-offset-background;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-95 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-surface-muted active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-surface-muted hover:text-foreground;
+}
+
+.input-field {
+  @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition focus-visible:focus-ring;
+}
+
+.status-completed {
+  @apply bg-success-muted text-success;
+}
+.status-pending {
+  @apply bg-warning-muted text-amber-950 dark:text-amber-100;
+}
+.status-failed {
+  @apply bg-danger-muted text-danger;
+}
+.status-processing {
+  @apply bg-info-muted text-info;
+}
+
+.status-badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize;
+}

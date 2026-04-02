@@ -1,0 +1,5 @@
+{
+  "name": "BoraBond Dashboard",
+  "description": "A comprehensive remittance service dashboard for managing transfers, recipients, and system health.",
+  "requestFramePermissions": []
+}
