@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
+  Bell,
   HelpCircle,
   History,
   LayoutDashboard,
@@ -12,7 +13,9 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  UserCircle2,
   Users,
+  ArrowRightLeft,
 } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -22,9 +25,12 @@ const primaryNav = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/queue", label: "Exceptions", icon: ShieldCheck },
   { href: "/send", label: "Execute", icon: Send },
+  { href: "/transfers", label: "Transfers", icon: ArrowRightLeft },
+  { href: "/users", label: "Users", icon: UserCircle2 },
   { href: "/transactions", label: "Transactions", icon: History },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/recipients", label: "Recipients", icon: Users },
-  { href: "/health", label: "Rails & health", icon: Activity },
+  { href: "/system", label: "System & admin", icon: Activity },
 ] as const;
 
 const secondaryNav = [

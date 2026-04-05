@@ -1,5 +1,5 @@
-import { SystemHealthPage } from "@/features/health/system-health-page";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <SystemHealthPage />;
+  redirect("/system");
 }
