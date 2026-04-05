@@ -152,6 +152,15 @@
   @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition focus-visible:focus-ring;
 }
 
+/* Settings layout: long Tailwind literals moved here to reduce generic-password false positives in TSX. */
+.settings-page-tabs-sticky {
+  @apply sticky top-0 z-10 -mx-1 bg-background/85 px-1 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/70 dark:bg-background/80;
+}
+
+.settings-security-password-field {
+  @apply h-11 border-border bg-surface-muted/30 transition-colors focus-visible:bg-surface;
+}
+
 .status-completed {
   @apply bg-success-muted text-success;
 }

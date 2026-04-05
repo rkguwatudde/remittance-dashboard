@@ -129,7 +129,7 @@ export function SettingsPage() {
         </header>
 
         {/* Tabs */}
-        <div className="sticky top-0 z-10 -mx-1 bg-background/85 px-1 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/70 dark:bg-background/80">
+        <div className="settings-page-tabs-sticky">
           <div
             className="flex gap-1 overflow-x-auto pb-px sm:gap-2"
             role="tablist"
@@ -224,7 +224,7 @@ export function SettingsPage() {
                       value={current}
                       onChange={(e) => setCurrent(e.target.value)}
                       disabled={loading}
-                      className="h-11 border-border bg-surface-muted/30 transition-colors focus-visible:bg-surface"
+                      className="settings-security-password-field"
                     />
                   </div>
                   <div className="space-y-2">
@@ -238,7 +238,7 @@ export function SettingsPage() {
                       value={next}
                       onChange={(e) => setNext(e.target.value)}
                       disabled={loading}
-                      className="h-11 border-border bg-surface-muted/30 transition-colors focus-visible:bg-surface"
+                      className="settings-security-password-field"
                     />
                   </div>
                   <div className="space-y-2">
@@ -252,7 +252,7 @@ export function SettingsPage() {
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
                       disabled={loading}
-                      className="h-11 border-border bg-surface-muted/30 transition-colors focus-visible:bg-surface"
+                      className="settings-security-password-field"
                     />
                   </div>
 
