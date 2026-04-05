@@ -1,6 +1,10 @@
 /**
  * Remittance API — dashboard admin auth (/api/v1/admins/*).
- * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL (e.g. http://localhost:9002).
+ *
+ * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL
+ * - Local: http://localhost:9002 (direct to Nest; CORS allowlist includes localhost).
+ * - Production (duplicate CORS at Cloudflare/nginx): /api/remittance-backend and set
+ *   REMITTANCE_API_UPSTREAM=https://remittance.api.borabond.com in next.config (rewrites).
  */
 
 const baseUrl = () =>
