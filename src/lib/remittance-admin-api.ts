@@ -277,6 +277,39 @@ export async function adminDashboardOverview(accessToken: string) {
   return raw.data;
 }
 
+export type AdminBullmqQueueSnapshot =
+  | { queue: string; counts: Record<string, number>; paused: boolean }
+  | { queue: string; error: string };
+
+export type AdminQueueOverview = {
+  generated_at: string;
+  bullmq: AdminBullmqQueueSnapshot[];
+  send_money_jobs: {
+    by_status: Record<string, number>;
+    recent: Array<{
+      id: string;
+      user_id: string;
+      status: string;
+      transfer_type: string;
+      created_at: string;
+      updated_at: string;
+      transfer_guid: string | null;
+      error_message: string | null;
+    }>;
+  };
+};
+
+export async function adminQueueOverview(accessToken: string) {
+  const raw = await request<{ success: boolean; data: AdminQueueOverview }>(
+    "/api/v1/admins/queue/overview",
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
 /** Remittance row from GET /admins/remittance-transactions */
 export type AdminRemittanceTransactionRow = {
   id: string;

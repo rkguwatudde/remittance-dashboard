@@ -28,9 +28,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const CHART_PRIMARY = "oklch(0.48 0.19 264)";
+const CHART_PRIMARY = "oklch(0.44 0.14 154)";
 const CHART_ACCENT = "oklch(0.72 0.14 232)";
-const CHART_GRID = "oklch(0.55 0.02 264 / 0.35)";
+const CHART_GRID = "oklch(0.55 0.02 154 / 0.35)";
 
 const latencyData = [
   { time: "10:00", api: 120, db: 45 },
@@ -133,17 +133,17 @@ export function SystemHealthPage() {
                   dataKey="time"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 11, fill: "oklch(0.55 0.02 264)" }}
+                  tick={{ fontSize: 11, fill: "oklch(0.55 0.02 154)" }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 11, fill: "oklch(0.55 0.02 264)" }}
+                  tick={{ fontSize: 11, fill: "oklch(0.55 0.02 154)" }}
                 />
                 <Tooltip
                   contentStyle={{
                     borderRadius: 12,
-                    border: "1px solid oklch(0.88 0.01 264)",
+                    border: "1px solid oklch(0.88 0.01 154)",
                   }}
                 />
                 <Area

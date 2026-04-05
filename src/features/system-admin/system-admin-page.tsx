@@ -57,7 +57,7 @@ import { RemittanceAuditDrawer } from "./remittance-audit-drawer";
 
 const POLL_MS = 8000;
 const PAGE = 25;
-const CHART_GRID = "oklch(0.55 0.02 264 / 0.35)";
+const CHART_GRID = "oklch(0.55 0.02 154 / 0.35)";
 
 function statusBadge(
   s: string,

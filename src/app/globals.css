@@ -2,27 +2,27 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* —— BoraBond design tokens (ops / remittance console) —— */
+/* —— BoraBond design tokens (ops / remittance console) —— green brand, aligned with borabond.com */
 @theme {
-  /* Brand */
-  --color-primary: oklch(0.48 0.19 264);
+  /* Brand (hue ~154: deep emerald / growth green) */
+  --color-primary: oklch(0.44 0.14 154);
   --color-primary-foreground: oklch(0.99 0 0);
-  --color-primary-muted: oklch(0.48 0.19 264 / 0.12);
+  --color-primary-muted: oklch(0.44 0.14 154 / 0.14);
 
-  --color-accent: oklch(0.72 0.14 232);
-  --color-accent-foreground: oklch(0.22 0.04 264);
+  --color-accent: oklch(0.78 0.11 165);
+  --color-accent-foreground: oklch(0.22 0.05 154);
 
-  /* Surfaces */
-  --color-background: oklch(0.985 0.004 264);
+  /* Surfaces (subtle green-neutral tint) */
+  --color-background: oklch(0.985 0.004 154);
   --color-surface: oklch(1 0 0);
   --color-surface-elevated: oklch(1 0 0);
-  --color-surface-muted: oklch(0.965 0.006 264);
+  --color-surface-muted: oklch(0.965 0.006 154);
 
-  --color-border: oklch(0.91 0.01 264);
-  --color-border-strong: oklch(0.84 0.02 264);
+  --color-border: oklch(0.91 0.01 154);
+  --color-border-strong: oklch(0.84 0.02 154);
 
-  --color-foreground: oklch(0.22 0.03 264);
-  --color-muted-foreground: oklch(0.48 0.02 264);
+  --color-foreground: oklch(0.22 0.03 154);
+  --color-muted-foreground: oklch(0.48 0.02 154);
 
   /* Semantic (remittance / risk) */
   --color-success: oklch(0.55 0.14 158);
@@ -35,8 +35,8 @@
   --color-info-muted: oklch(0.55 0.14 250 / 0.14);
 
   /* Charts */
-  --color-chart-1: oklch(0.48 0.19 264);
-  --color-chart-2: oklch(0.72 0.14 232);
+  --color-chart-1: oklch(0.44 0.14 154);
+  --color-chart-2: oklch(0.72 0.12 168);
   --color-chart-3: oklch(0.55 0.14 158);
   --color-chart-4: oklch(0.75 0.15 84);
   --color-chart-5: oklch(0.55 0.2 25);
@@ -60,18 +60,18 @@
 }
 
 .dark {
-  --color-background: oklch(0.16 0.02 264);
-  --color-surface: oklch(0.2 0.022 264);
-  --color-surface-elevated: oklch(0.24 0.022 264);
-  --color-surface-muted: oklch(0.22 0.02 264);
+  --color-background: oklch(0.16 0.02 154);
+  --color-surface: oklch(0.2 0.022 154);
+  --color-surface-elevated: oklch(0.24 0.022 154);
+  --color-surface-muted: oklch(0.22 0.02 154);
 
-  --color-border: oklch(0.32 0.02 264);
-  --color-border-strong: oklch(0.4 0.02 264);
+  --color-border: oklch(0.32 0.02 154);
+  --color-border-strong: oklch(0.4 0.02 154);
 
-  --color-foreground: oklch(0.96 0.01 264);
-  --color-muted-foreground: oklch(0.68 0.02 264);
+  --color-foreground: oklch(0.96 0.01 154);
+  --color-muted-foreground: oklch(0.68 0.02 154);
 
-  --color-primary-muted: oklch(0.62 0.16 264 / 0.18);
+  --color-primary-muted: oklch(0.62 0.14 154 / 0.2);
   --shadow-card: 0 1px 0 oklch(0 0 0 / 0.2), 0 1px 3px oklch(0 0 0 / 0.35);
   --shadow-floating: 0 16px 48px oklch(0 0 0 / 0.45);
 }
@@ -130,7 +130,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      oklch(0.96 0.01 264 / 0.06),
+      oklch(0.96 0.01 154 / 0.06),
       transparent
     );
   }
