@@ -245,6 +245,8 @@ export function SendMoneyFlow() {
   }, [adminToken, step, transferType]);
 
   const [submitting, setSubmitting] = React.useState(false);
+  /** Blocks a second in-flight submit before React re-renders (double-click / rapid taps). */
+  const submitInFlightRef = React.useRef(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [paymentResult, setPaymentResult] = React.useState<{
     transactionId: string;
@@ -276,13 +278,12 @@ export function SendMoneyFlow() {
     receiveAmountLocal >= minReceive;
 
   const canProceed3 =
-    recipientName.trim().length > 0 &&
-    (transferType === "mobile_money"
-      ? normalizeMsisdn(mmPhone).length >= 12
+    transferType === "mobile_money"
+      ? recipientName.trim().length > 0 && normalizeMsisdn(mmPhone).length >= 12
       : Boolean(bankAccount.trim()) &&
         Boolean(bankSortCode.trim()) &&
-        Boolean(bankHolder.trim()) &&
-        normalizeMsisdn(senderMsisdn).length >= 12);
+        bankHolder.trim().length > 0 &&
+        normalizeMsisdn(senderMsisdn).length >= 12;
 
   const onValidateMm = async () => {
     if (!adminToken || !selectedUser) return;
@@ -371,7 +372,7 @@ export function SendMoneyFlow() {
       channel: "web_app",
       amount: amountMinor,
       currency: receiveCurrency.toUpperCase(),
-      recipientName: recipientName.trim(),
+      recipientName: transferType === "bank" ? bankHolder.trim() : recipientName.trim(),
       deviceType: "Web",
       amountSend: transferCents,
       currencySend: "USD",
@@ -410,6 +411,8 @@ export function SendMoneyFlow() {
 
   const onSubmit = async () => {
     if (!adminToken || !selectedUser) return;
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     setPaymentResult(null);
@@ -427,6 +430,7 @@ export function SendMoneyFlow() {
         e instanceof AdminApiError ? e.message : e instanceof Error ? e.message : "Submit failed.";
       setSubmitError(msg);
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -894,7 +898,14 @@ export function SendMoneyFlow() {
                         : "—"
                     }
                   />
-                  <Row k="Recipient" v={recipientName.trim() || "—"} />
+                  <Row
+                    k="Recipient"
+                    v={
+                      transferType === "bank"
+                        ? bankHolder.trim() || "—"
+                        : recipientName.trim() || "—"
+                    }
+                  />
                   {transferType === "mobile_money" ? (
                     <Row
                       k="Phone / network"
