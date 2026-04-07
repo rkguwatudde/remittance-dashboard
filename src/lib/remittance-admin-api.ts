@@ -1141,3 +1141,163 @@ export async function adminOperationsList(
   });
   return raw.data;
 }
+
+/** GET /admins/send-money/customer-rate — rate for a specific app user (ops JWT). */
+export type AdminSendMoneyCustomerRate = {
+  customerRate: number;
+  providerRate: number;
+  hasBoughtBond?: boolean;
+  currency?: string;
+  platform?: string;
+  transactionType?: string;
+};
+
+export async function adminSendMoneyCustomerRate(
+  accessToken: string,
+  params: { user_id: string; useBondRate?: boolean },
+) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyCustomerRate }>(
+    `/api/v1/admins/send-money/customer-rate${buildQuery({
+      user_id: params.user_id,
+      useBondRate: params.useBondRate,
+    })}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+/** POST /admins/send-money/app-user-access-token — short-lived JWT for payout proxy (ops only). */
+export async function adminSendMoneyIssueAppUserAccessToken(
+  accessToken: string,
+  body: { user_id: string },
+): Promise<{ access_token: string; expires_in: number }> {
+  const raw = await request<{
+    success: boolean;
+    data: { access_token: string; expires_in: number };
+  }>("/api/v1/admins/send-money/app-user-access-token", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: body,
+  });
+  return raw.data;
+}
+
+export type AdminSendMoneyValidateResult = {
+  accountName: string;
+  accountNumber: string;
+  bankCode: string;
+  providerReference: string;
+};
+
+/** POST /admins/send-money/validate-account — includes API code/message for UI status. */
+export type AdminSendMoneyValidateAccountResponse = AdminSendMoneyValidateResult & {
+  apiCode: string | undefined;
+  apiMessage: string;
+  /** Backend success code (e.g. ACCOUNT_VALIDATED). */
+  isProviderSuccess: boolean;
+  /** Parsed display name looks like a real beneficiary (not "not found" / empty). */
+  hasUsableRecipientName: boolean;
+};
+
+export async function adminSendMoneyValidateAccount(
+  accessToken: string,
+  body: { user_id: string; payload: Record<string, unknown> },
+): Promise<AdminSendMoneyValidateAccountResponse> {
+  const raw = await request<{
+    success: boolean;
+    code?: string;
+    message?: string;
+    data?: AdminSendMoneyValidateResult | null;
+  }>("/api/v1/admins/send-money/validate-account", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: body,
+  });
+  const d = raw.data;
+  const accountName = d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).accountName ?? "") : "";
+  const accountNumber =
+    d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).accountNumber ?? "") : "";
+  const bankCode = d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).bankCode ?? "") : "";
+  const providerReference =
+    d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).providerReference ?? "") : "";
+  const code = raw.code;
+  const isProviderSuccess = code === "ACCOUNT_VALIDATED";
+  const hasUsableRecipientName =
+    accountName.trim().length > 0 &&
+    !/^not\s*found$/i.test(accountName.trim()) &&
+    accountName.trim().toLowerCase() !== "null";
+  return {
+    accountName,
+    accountNumber,
+    bankCode,
+    providerReference,
+    apiCode: code,
+    apiMessage: typeof raw.message === "string" ? raw.message : "",
+    isProviderSuccess,
+    hasUsableRecipientName,
+  };
+}
+
+export type AdminSendMoneyJobCreateBody = {
+  instant_funding: {
+    customer_guid: string;
+    receive_amount: number;
+    bond_amount?: number;
+    bond_percentage?: number;
+    external_id: string;
+  };
+  transfer_type: "mobile_money" | "bank";
+  mobile_money?: Record<string, unknown>;
+  bank?: Record<string, unknown>;
+  request_metadata?: Record<string, unknown>;
+};
+
+export type AdminSendMoneyJobCreateResult = {
+  id?: string;
+  jobId?: string;
+  status: string;
+  transfer_guid?: string | null;
+  result?: Record<string, unknown> | null;
+  error_message?: string | null;
+};
+
+/** POST /admins/send-money/jobs */
+export async function adminSendMoneyCreateJob(
+  accessToken: string,
+  body: { user_id: string; job: AdminSendMoneyJobCreateBody },
+) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyJobCreateResult }>(
+    "/api/v1/admins/send-money/jobs",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
+  return raw.data;
+}
+
+export type AdminSendMoneyJobRow = {
+  id: string;
+  status: string;
+  transfer_guid?: string | null;
+  result?: Record<string, unknown> | null;
+  error_message?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/** GET /admins/send-money/jobs/:id */
+export async function adminSendMoneyGetJob(accessToken: string, jobId: string) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyJobRow }>(
+    `/api/v1/admins/send-money/jobs/${encodeURIComponent(jobId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}

@@ -311,7 +311,7 @@ export function SettingsPage() {
               id="workspace-panel-inner"
               icon={Sparkles}
               title="Workspace"
-              description="Soon: feature flags, API environment pointers, and saved views for your operators."
+              description="Send money on Execute uses admin routes on the remittance API; no separate app-user token is required."
             >
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface-muted/30 px-6 py-14 text-center dark:bg-surface-muted/15">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-primary-muted text-primary">
@@ -319,7 +319,7 @@ export function SettingsPage() {
                 </div>
                 <p className="mt-5 max-w-md text-sm font-medium text-foreground">Configuration hub</p>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  Connect your config service or feature flag provider to centralize rollout controls for this console.
+                  More workspace options (feature flags, saved views) can plug in here later.
                 </p>
                 <Badge variant="outline" className="mt-6 text-[10px] font-normal uppercase tracking-wider">
                   Coming soon

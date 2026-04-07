@@ -1,60 +1,464 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   ArrowRight,
-  Banknote,
   CheckCircle2,
   ChevronLeft,
-  CreditCard,
   Info,
-  Plus,
-  Search,
+  Loader2,
   Smartphone,
+  Landmark,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/providers/auth-provider";
+import {
+  adminBanksList,
+  adminUserDetail,
+  adminSendMoneyCustomerRate,
+  adminSendMoneyValidateAccount,
+  AdminApiError,
+  type AdminBankListItem,
+  type AdminSendMoneyValidateAccountResponse,
+  type AdminUserDetailResponse,
+  type AdminUserDirectoryRow,
+} from "@/lib/remittance-admin-api";
+import { postRemittancePaymentsViaDashboardProxy } from "@/lib/remittance-payments-api";
+import { UserSelector } from "@/features/users/user-selector";
 
-const steps = [
-  { id: 1, title: "Amount", description: "Send / receive" },
-  { id: 2, title: "Recipient", description: "Beneficiary" },
-  { id: 3, title: "Review", description: "Compliance" },
-  { id: 4, title: "Submitted", description: "Rail handoff" },
-];
+const STEPS = [
+  { id: 1, title: "Sender", description: "App user" },
+  { id: 2, title: "Amount", description: "USD → receive" },
+  { id: 3, title: "Recipient", description: "MM / bank" },
+  { id: 4, title: "Review", description: "Submit payment" },
+  { id: 5, title: "Result", description: "Queued" },
+] as const;
 
-const recipients = [
-  { id: "1", name: "Alice Johnson", email: "alice@example.com", avatar: "AJ" },
-  { id: "2", name: "Bob Smith", email: "bob@example.com", avatar: "BS" },
-  { id: "3", name: "Charlie Brown", email: "charlie@example.com", avatar: "CB" },
-];
+function normalizeMsisdn(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.startsWith("0") && d.length === 10) d = `256${d.slice(1)}`;
+  if (!d.startsWith("256") && d.length === 9) d = `256${d}`;
+  return d;
+}
+
+function toMinorUnits(currency: string, amount: number): number {
+  const c = currency.toUpperCase();
+  if (c === "UGX" || c === "KES" || c === "TZS") return Math.round(amount);
+  return Math.round(amount * 100);
+}
+
+function buildRequestMetadata(): Record<string, unknown> {
+  return {
+    channel: "ops_dashboard",
+    deviceType: "web",
+    userAgent:
+      typeof navigator !== "undefined" ? navigator.userAgent : "remittance-dashboard",
+    riskScore: 0,
+    riskLevel: "LOW",
+  };
+}
+
+function SendMoneyValidationCard({
+  v,
+  onApplyName,
+  applyLabel,
+}: {
+  v: AdminSendMoneyValidateAccountResponse;
+  onApplyName?: () => void;
+  applyLabel: string;
+}) {
+  const ok = v.isProviderSuccess || v.hasUsableRecipientName;
+  const displayName = v.accountName.trim() || "—";
+  return (
+    <div
+      className={cn(
+        "space-y-3 rounded-xl border p-4 text-sm",
+        ok
+          ? "border-emerald-500/45 bg-emerald-500/10 dark:bg-emerald-500/5"
+          : "border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/5",
+      )}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        Validation result
+      </p>
+      <p
+        className={cn(
+          "text-sm font-medium leading-snug",
+          ok ? "text-emerald-800 dark:text-emerald-200" : "text-amber-900 dark:text-amber-100",
+        )}
+      >
+        {v.apiMessage?.trim() || (ok ? "Provider returned account details." : "Review the fields below.")}
+      </p>
+      {v.apiCode ? (
+        <p className="text-[11px] text-muted-foreground">
+          API code: <code className="rounded bg-surface-muted px-1">{v.apiCode}</code>
+        </p>
+      ) : null}
+      <dl className="grid gap-3 border-t border-border/60 pt-3 text-xs">
+        <div>
+          <dt className="font-medium text-muted-foreground">Account / beneficiary name</dt>
+          <dd className="mt-0.5 text-base font-semibold text-foreground">{displayName}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-muted-foreground">Account / phone (ID)</dt>
+          <dd className="mt-0.5 font-mono text-sm text-foreground break-all">
+            {v.accountNumber.trim() || "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium text-muted-foreground">Network or bank code</dt>
+          <dd className="mt-0.5 font-mono text-sm text-foreground">{v.bankCode.trim() || "—"}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-muted-foreground">Provider reference</dt>
+          <dd className="mt-0.5 font-mono text-[11px] text-foreground break-all">
+            {v.providerReference.trim() || "—"}
+          </dd>
+        </div>
+      </dl>
+      {v.hasUsableRecipientName && onApplyName ? (
+        <Button type="button" variant="secondary" size="sm" className="mt-1 w-full sm:w-auto" onClick={onApplyName}>
+          {applyLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 export function SendMoneyFlow() {
-  const [currentStep, setCurrentStep] = React.useState(1);
-  const [amount, setAmount] = React.useState("1000");
-  const [selectedRecipient, setSelectedRecipient] = React.useState<
-    (typeof recipients)[0] | null
-  >(null);
-  const [paymentMethod, setPaymentMethod] = React.useState("bank");
+  const { getAccessToken } = useAuth();
+  const adminToken = getAccessToken();
 
-  const nextStep = () => setCurrentStep((p) => Math.min(p + 1, steps.length));
-  const prevStep = () => setCurrentStep((p) => Math.max(p - 1, 1));
+  const [step, setStep] = React.useState(1);
+  const [selectedUser, setSelectedUser] = React.useState<AdminUserDirectoryRow | null>(null);
+  const [userDetail, setUserDetail] = React.useState<AdminUserDetailResponse | null>(null);
+  const [userDetailLoading, setUserDetailLoading] = React.useState(false);
+  const [listError, setListError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!selectedUser || !adminToken) {
+      setUserDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setUserDetailLoading(true);
+    adminUserDetail(adminToken, selectedUser.user_id)
+      .then((d) => {
+        if (!cancelled) setUserDetail(d);
+      })
+      .catch(() => {
+        if (!cancelled) setUserDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setUserDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUser, adminToken]);
+
+  const customerGuid = userDetail?.cybrid?.cybrid_customer_id ?? null;
+
+  const [transferType, setTransferType] = React.useState<"mobile_money" | "bank">("mobile_money");
+  const [sendUsd, setSendUsd] = React.useState("50");
+  const [bondPercent, setBondPercent] = React.useState("0");
+  const [receiveCurrency, setReceiveCurrency] = React.useState("UGX");
+  const [countryCode, setCountryCode] = React.useState("UG");
+
+  const [customerRate, setCustomerRate] = React.useState<number | null>(null);
+  const [rateLoading, setRateLoading] = React.useState(false);
+  const [rateError, setRateError] = React.useState<string | null>(null);
+
+  const [receiveAmountLocal, setReceiveAmountLocal] = React.useState<number | null>(null);
+
+  const bondPctNum = Math.min(100, Math.max(0, Number(bondPercent) || 0));
+  const sendUsdNum = Number(sendUsd) || 0;
+  const useBondRate = bondPctNum > 0;
+
+  const fetchRate = React.useCallback(async () => {
+    if (!adminToken || !selectedUser) {
+      setRateError("Select a sender and ensure you are signed in.");
+      return;
+    }
+    setRateLoading(true);
+    setRateError(null);
+    try {
+      const data = await adminSendMoneyCustomerRate(adminToken, {
+        user_id: selectedUser.user_id,
+        useBondRate,
+      });
+      setCustomerRate(data.customerRate);
+      if (sendUsdNum > 0 && data.customerRate > 0) {
+        setReceiveAmountLocal(Math.round(sendUsdNum * data.customerRate));
+      }
+    } catch (e) {
+      const msg = e instanceof AdminApiError ? e.message : "Could not load exchange rate.";
+      setRateError(msg);
+      setCustomerRate(null);
+    } finally {
+      setRateLoading(false);
+    }
+  }, [adminToken, selectedUser, sendUsdNum, useBondRate]);
+
+  React.useEffect(() => {
+    if (customerRate != null && customerRate > 0 && sendUsdNum > 0) {
+      setReceiveAmountLocal(Math.round(sendUsdNum * customerRate));
+    }
+  }, [sendUsdNum, customerRate]);
+
+  const [recipientName, setRecipientName] = React.useState("");
+  const [mmPhone, setMmPhone] = React.useState("");
+  const [mmNetwork, setMmNetwork] = React.useState<"MTN" | "AIRTEL">("MTN");
+  const [mmValidation, setMmValidation] = React.useState<
+    (AdminSendMoneyValidateAccountResponse & { rail: "mobile_money" }) | null
+  >(null);
+  const [bankValidation, setBankValidation] = React.useState<
+    (AdminSendMoneyValidateAccountResponse & { rail: "bank" }) | null
+  >(null);
+  const [validating, setValidating] = React.useState(false);
+
+  const [bankAccount, setBankAccount] = React.useState("");
+  const [bankHolder, setBankHolder] = React.useState("");
+  const [bankSortCode, setBankSortCode] = React.useState("");
+  const [senderMsisdn, setSenderMsisdn] = React.useState("");
+  const [banks, setBanks] = React.useState<AdminBankListItem[]>([]);
+
+  React.useEffect(() => {
+    if (!adminToken || step !== 3 || transferType !== "bank") return;
+    let cancelled = false;
+    adminBanksList(adminToken)
+      .then((b) => {
+        if (!cancelled) setBanks(b);
+      })
+      .catch(() => {
+        if (!cancelled) setBanks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken, step, transferType]);
+
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [paymentResult, setPaymentResult] = React.useState<{
+    transactionId: string;
+    status: string;
+  } | null>(null);
+
+  const nextStep = () => setStep((s) => Math.min(s + 1, 5));
+  const prevStep = () => setStep((s) => Math.max(s - 1, 1));
+
+  const canProceed1 =
+    Boolean(adminToken) &&
+    Boolean(selectedUser) &&
+    userDetail?.eligibility.can_transfer === true;
+
+  const minReceive =
+    transferType === "bank"
+      ? receiveCurrency === "UGX"
+        ? 5000
+        : 100
+      : receiveCurrency === "UGX"
+        ? 500
+        : 100;
+
+  const canProceed2 =
+    sendUsdNum > 0 &&
+    customerRate != null &&
+    customerRate > 0 &&
+    receiveAmountLocal != null &&
+    receiveAmountLocal >= minReceive;
+
+  const canProceed3 =
+    recipientName.trim().length > 0 &&
+    (transferType === "mobile_money"
+      ? normalizeMsisdn(mmPhone).length >= 12
+      : Boolean(bankAccount.trim()) &&
+        Boolean(bankSortCode.trim()) &&
+        Boolean(bankHolder.trim()) &&
+        normalizeMsisdn(senderMsisdn).length >= 12);
+
+  const onValidateMm = async () => {
+    if (!adminToken || !selectedUser) return;
+    setValidating(true);
+    setSubmitError(null);
+    setMmValidation(null);
+    try {
+      const phone = normalizeMsisdn(mmPhone);
+      const data = await adminSendMoneyValidateAccount(adminToken, {
+        user_id: selectedUser.user_id,
+        payload: {
+          type: "mobile_money",
+          phoneNumber: phone,
+          network: mmNetwork,
+          amount: 500,
+          currency: receiveCurrency,
+        },
+      });
+      setMmValidation({ ...data, rail: "mobile_money" });
+      if (data.hasUsableRecipientName) {
+        setRecipientName(data.accountName.trim());
+      }
+    } catch (e) {
+      const msg = e instanceof AdminApiError ? e.message : "Validation failed.";
+      setSubmitError(msg);
+      setMmValidation(null);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const onValidateBank = async () => {
+    if (!adminToken || !selectedUser) return;
+    const acc = bankAccount.trim();
+    const code = bankSortCode.trim();
+    if (!acc || !code) {
+      setSubmitError("Enter account number and select a bank before validating.");
+      return;
+    }
+    setValidating(true);
+    setSubmitError(null);
+    setBankValidation(null);
+    try {
+      const data = await adminSendMoneyValidateAccount(adminToken, {
+        user_id: selectedUser.user_id,
+        payload: {
+          type: "bank",
+          accountNumber: acc,
+          bankCode: code,
+          amount: 500,
+          currency: receiveCurrency,
+        },
+      });
+      setBankValidation({ ...data, rail: "bank" });
+      if (data.hasUsableRecipientName) {
+        setBankHolder(data.accountName.trim());
+      }
+    } catch (e) {
+      const msg = e instanceof AdminApiError ? e.message : "Validation failed.";
+      setSubmitError(msg);
+      setBankValidation(null);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  React.useEffect(() => {
+    setMmValidation(null);
+  }, [mmPhone, mmNetwork, receiveCurrency]);
+
+  React.useEffect(() => {
+    setBankValidation(null);
+  }, [bankAccount, bankSortCode, receiveCurrency]);
+
+  const buildDirectPaymentBody = (): Record<string, unknown> => {
+    const recv =
+      receiveAmountLocal ??
+      (customerRate && sendUsdNum > 0 ? Math.round(sendUsdNum * customerRate) : 0);
+    const amountMinor = toMinorUnits(receiveCurrency, recv);
+    const transferCents = Math.round(sendUsdNum * 100);
+    const meta = buildRequestMetadata();
+
+    const base: Record<string, unknown> = {
+      transferType,
+      paymentType: "payout",
+      channel: "web_app",
+      amount: amountMinor,
+      currency: receiveCurrency.toUpperCase(),
+      recipientName: recipientName.trim(),
+      deviceType: "Web",
+      amountSend: transferCents,
+      currencySend: "USD",
+      amountReceive: recv,
+      currencyReceive: receiveCurrency.toUpperCase(),
+      metadata: meta,
+      riskScore: 0,
+      riskLevel: "LOW",
+      userAgent: typeof meta.userAgent === "string" ? meta.userAgent : undefined,
+    };
+
+    if (customerRate != null && customerRate > 0) {
+      base.conversionRate = customerRate;
+    }
+
+    if (bondPctNum > 0) {
+      base.metadata = { ...meta, bondPercent: bondPctNum };
+    }
+
+    const refMm = mmValidation?.providerReference?.trim();
+    const refBank = bankValidation?.providerReference?.trim();
+    if (transferType === "mobile_money" && refMm) base.referenceId = refMm;
+    if (transferType === "bank" && refBank) base.referenceId = refBank;
+
+    if (transferType === "mobile_money") {
+      base.phoneNumber = normalizeMsisdn(mmPhone);
+      base.network = mmNetwork;
+    } else {
+      base.phoneNumber = normalizeMsisdn(senderMsisdn);
+      base.accountNumber = bankAccount.trim();
+      base.bankSortCode = bankSortCode.trim();
+    }
+
+    return base;
+  };
+
+  const onSubmit = async () => {
+    if (!adminToken || !selectedUser) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    setPaymentResult(null);
+    try {
+      const body = buildDirectPaymentBody();
+      const queued = await postRemittancePaymentsViaDashboardProxy(
+        adminToken,
+        selectedUser.user_id,
+        body,
+      );
+      setPaymentResult(queued);
+      setStep(5);
+    } catch (e) {
+      const msg =
+        e instanceof AdminApiError ? e.message : e instanceof Error ? e.message : "Submit failed.";
+      setSubmitError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetFlow = () => {
+    setStep(1);
+    setPaymentResult(null);
+    setSubmitError(null);
+    setMmValidation(null);
+    setBankValidation(null);
+  };
+
+  const blockers = userDetail?.eligibility?.blockers ?? [];
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-            Execute transfer
+            Send money
           </h1>
           <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
-            Ops-initiated payout with full audit trail (mock flow).
+            Queues provider payout (Pegasus, ChapChap, etc.) via{" "}
+            <code className="rounded bg-surface-muted px-1 text-xs">POST /api/v1/remittance/payments</code>
+            , same as the mobile app.             Submit calls the dashboard API, which asks the remittance backend for a short-lived app-user JWT
+            (same roles as send-money: Super / Operations / Finance) and then posts to{" "}
+            <code className="rounded bg-surface-muted px-1 text-xs">/remittance/payments</code>. No manual
+            token config.
           </p>
         </div>
-        {currentStep > 1 && currentStep < 4 ? (
-          <Button variant="secondary" className="gap-2" onClick={prevStep}>
+        {step > 1 && step < 5 ? (
+          <Button type="button" variant="secondary" className="gap-2" onClick={prevStep}>
             <ChevronLeft className="size-4" />
             Back
           </Button>
@@ -62,39 +466,35 @@ export function SendMoneyFlow() {
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-2 px-1 sm:flex-nowrap">
-        {steps.map((step, idx) => (
-          <React.Fragment key={step.id}>
+        {STEPS.map((s, idx) => (
+          <React.Fragment key={s.id}>
             <div className="flex min-w-[72px] flex-col items-center gap-2">
               <div
                 className={cn(
                   "flex size-10 items-center justify-center rounded-full text-sm font-semibold transition-all",
-                  currentStep >= step.id
+                  step >= s.id
                     ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                     : "bg-surface-muted text-muted-foreground",
                 )}
               >
-                {currentStep > step.id ? (
-                  <CheckCircle2 className="size-6" />
-                ) : (
-                  step.id
-                )}
+                {step > s.id ? <CheckCircle2 className="size-6" /> : s.id}
               </div>
               <div className="text-center">
                 <p
                   className={cn(
                     "text-[10px] font-bold uppercase tracking-wider",
-                    currentStep >= step.id ? "text-primary" : "text-muted-foreground",
+                    step >= s.id ? "text-primary" : "text-muted-foreground",
                   )}
                 >
-                  {step.title}
+                  {s.title}
                 </p>
               </div>
             </div>
-            {idx < steps.length - 1 ? (
+            {idx < STEPS.length - 1 ? (
               <div
                 className={cn(
                   "mx-1 mt-5 hidden h-0.5 min-w-[12px] flex-1 rounded-full sm:block",
-                  currentStep > step.id ? "bg-primary" : "bg-surface-muted",
+                  step > s.id ? "bg-primary" : "bg-surface-muted",
                 )}
               />
             ) : null}
@@ -105,257 +505,497 @@ export function SendMoneyFlow() {
       <Card>
         <CardContent className="flex min-h-[480px] flex-col p-6 md:p-8">
           <AnimatePresence mode="wait">
-            {currentStep === 1 ? (
+            {step === 1 ? (
               <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 16 }}
+                key="s1"
+                initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -16 }}
-                className="flex flex-1 flex-col space-y-8"
+                exit={{ opacity: 0, x: -12 }}
+                className="flex flex-1 flex-col gap-6"
               >
-                <div className="space-y-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    You send
-                  </label>
-                  <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-transparent bg-surface-muted p-5 transition focus-within:border-primary/25 focus-within:bg-surface">
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="min-w-0 flex-1 bg-transparent text-3xl font-semibold text-foreground focus:outline-none md:text-4xl"
-                      placeholder="0.00"
-                    />
-                    <div className="flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 shadow-sm">
-                      <span className="text-lg font-semibold">USD</span>
-                      <ChevronLeft className="size-4 -rotate-90 text-muted-foreground" />
-                    </div>
+                <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <p>
+                      Choose the customer from the directory. On submit, the server mints that user&apos;s
+                      access token for the payment call (ops session required).
+                    </p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Recipient receives
-                  </label>
-                  <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-border/60 bg-surface-muted p-5">
-                    <div className="flex-1 text-3xl font-semibold text-muted-foreground md:text-4xl">
-                      {(Number(amount) * 110.5).toLocaleString()}
-                    </div>
-                    <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 shadow-sm">
-                      <span className="text-lg font-semibold">KES</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-xl border border-primary/15 bg-primary-muted/50 p-3 text-xs text-muted-foreground">
-                    <Info className="size-4 shrink-0 text-primary" />
-                    <span>
-                      FX: 1 USD = 110.50 KES · Cover fee: $2.50 (partner pass-through)
-                    </span>
-                  </div>
-                </div>
+                <UserSelector
+                  accessToken={adminToken}
+                  selected={selectedUser}
+                  onSelect={(u) => {
+                    setSelectedUser(u);
+                    setListError(null);
+                  }}
+                  onError={(msg) => setListError(msg)}
+                />
+                {listError ? (
+                  <p className="text-sm text-danger" role="alert">
+                    {listError}
+                  </p>
+                ) : null}
 
-                <div className="mt-auto pt-6">
-                  <Button className="h-12 w-full gap-2 text-base" onClick={nextStep}>
-                    Continue to recipient
-                    <ArrowRight className="size-5" />
-                  </Button>
-                </div>
-              </motion.div>
-            ) : null}
-
-            {currentStep === 2 ? (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -16 }}
-                className="flex flex-1 flex-col space-y-6"
-              >
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="search"
-                    placeholder="Search name, email, phone, or BB recipient ID…"
-                    className="w-full rounded-2xl border border-transparent bg-surface-muted py-4 pl-12 pr-4 text-sm transition focus:border-primary/25 focus:bg-surface focus:outline-none focus:ring-4 focus:ring-primary/10"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                      Recent recipients
-                    </h4>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
-                    >
-                      <Plus className="size-4" /> Add new
-                    </button>
+                {userDetailLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading sender profile…</p>
+                ) : userDetail ? (
+                  <div className="space-y-2 rounded-xl border border-border bg-surface-muted/30 p-4 text-sm">
+                    <p>
+                      <span className="text-muted-foreground">Cybrid customer</span>{" "}
+                      <span className="font-mono text-foreground">
+                        {customerGuid ?? "— not linked —"}
+                      </span>
+                    </p>
+                    {!userDetail.eligibility.can_transfer && blockers.length > 0 ? (
+                      <ul className="list-inside list-disc text-danger">
+                        {blockers.map((b) => (
+                          <li key={b.code}>
+                            {b.message}{" "}
+                            <span className="text-xs opacity-80">({b.code})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {recipients.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setSelectedRecipient(r)}
-                        className={cn(
-                          "flex items-center gap-4 rounded-2xl border p-4 text-left transition",
-                          selectedRecipient?.id === r.id
-                            ? "border-primary bg-primary-muted/40 shadow-sm"
-                            : "border-border bg-surface hover:border-primary/40 hover:bg-surface-muted",
-                        )}
-                      >
-                        <div className="flex size-12 items-center justify-center rounded-full bg-surface-muted text-sm font-semibold text-foreground">
-                          {r.avatar}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">{r.name}</p>
-                          <p className="text-xs text-muted-foreground">{r.email}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                ) : selectedUser ? (
+                  <p className="text-sm text-danger">Could not load user detail.</p>
+                ) : null}
 
-                <div className="mt-auto pt-6">
+                <div className="mt-auto pt-4">
                   <Button
-                    className="h-12 w-full gap-2 text-base"
-                    disabled={!selectedRecipient}
+                    type="button"
+                    className="h-12 w-full gap-2"
+                    disabled={!canProceed1}
                     onClick={nextStep}
                   >
-                    Review &amp; compliance
-                    <ArrowRight className="size-5" />
+                    Continue
+                    <ArrowRight className="size-4" />
                   </Button>
                 </div>
               </motion.div>
             ) : null}
 
-            {currentStep === 3 ? (
+            {step === 2 ? (
               <motion.div
-                key="step3"
-                initial={{ opacity: 0, x: 16 }}
+                key="s2"
+                initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -16 }}
-                className="flex flex-1 flex-col space-y-8"
+                exit={{ opacity: 0, x: -12 }}
+                className="flex flex-1 flex-col gap-6"
               >
-                <div className="space-y-4 rounded-2xl border border-border bg-surface-muted/60 p-6">
-                  {[
-                    ["Recipient", selectedRecipient?.name ?? "—"],
-                    ["Send amount", `$${amount} USD`],
-                    ["Cover fee", "$2.50 USD"],
-                  ].map(([k, v]) => (
-                    <div
-                      key={k}
-                      className="flex justify-between border-b border-border pb-4 last:border-0 last:pb-0"
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTransferType("mobile_money")}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
+                      transferType === "mobile_money"
+                        ? "border-primary bg-primary-muted/40 text-primary"
+                        : "border-border bg-surface hover:bg-surface-muted",
+                    )}
+                  >
+                    <Smartphone className="size-5" />
+                    Mobile money
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTransferType("bank")}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
+                      transferType === "bank"
+                        ? "border-primary bg-primary-muted/40 text-primary"
+                        : "border-border bg-surface hover:bg-surface-muted",
+                    )}
+                  >
+                    <Landmark className="size-5" />
+                    Bank
+                  </button>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">You send (USD)</label>
+                    <Input
+                      inputMode="decimal"
+                      value={sendUsd}
+                      onChange={(e) => setSendUsd(e.target.value)}
+                      placeholder="50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">Bond % (0–100)</label>
+                    <Input
+                      inputMode="numeric"
+                      value={bondPercent}
+                      onChange={(e) => setBondPercent(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">Receive currency</label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                      value={receiveCurrency}
+                      onChange={(e) => setReceiveCurrency(e.target.value)}
                     >
-                      <span className="text-muted-foreground">{k}</span>
-                      <span className="font-semibold text-foreground">{v}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between pt-2">
-                    <span className="text-lg font-semibold text-foreground">
-                      Total debit
-                    </span>
-                    <span className="text-2xl font-semibold text-primary">
-                      ${(Number(amount) + 2.5).toFixed(2)} USD
-                    </span>
+                      <option value="UGX">UGX</option>
+                      <option value="KES">KES</option>
+                      <option value="TZS">TZS</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">Country</label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                      value={countryCode}
+                      onChange={(e) => setCountryCode(e.target.value)}
+                    >
+                      <option value="UG">UG</option>
+                      <option value="KE">KE</option>
+                      <option value="TZ">TZ</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                    Funding source
-                  </h4>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {[
-                      { id: "bank", icon: Banknote, label: "Prefund wallet" },
-                      { id: "card", icon: CreditCard, label: "Treasury card" },
-                      { id: "mobile", icon: Smartphone, label: "MTO float" },
-                    ].map((method) => (
-                      <button
-                        key={method.id}
-                        type="button"
-                        onClick={() => setPaymentMethod(method.id)}
-                        className={cn(
-                          "flex flex-col items-center gap-2 rounded-2xl border p-4 transition",
-                          paymentMethod === method.id
-                            ? "border-primary bg-primary-muted/40 shadow-sm"
-                            : "border-border bg-surface hover:bg-surface-muted",
-                        )}
-                      >
-                        <method.icon
-                          className={cn(
-                            "size-6",
-                            paymentMethod === method.id
-                              ? "text-primary"
-                              : "text-muted-foreground",
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            "text-center text-xs font-semibold",
-                            paymentMethod === method.id
-                              ? "text-primary"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {method.label}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-auto pt-6">
-                  <Button className="h-12 w-full gap-2 text-base" onClick={nextStep}>
-                    Submit to rail
-                    <ArrowRight className="size-5" />
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={rateLoading || !adminToken || !selectedUser}
+                    onClick={() => void fetchRate()}
+                    className="gap-2"
+                  >
+                    {rateLoading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Loading rate…
+                      </>
+                    ) : (
+                      "Fetch customer rate"
+                    )}
                   </Button>
+                  {useBondRate ? (
+                    <span className="text-xs text-muted-foreground">Using bond tier rate.</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Using standard tier rate.</span>
+                  )}
                 </div>
+                {rateError ? (
+                  <p className="text-sm text-danger" role="alert">
+                    {rateError}
+                  </p>
+                ) : null}
+
+                <div className="rounded-xl border border-border bg-surface-muted/40 p-4 text-sm">
+                  <p className="text-muted-foreground">Recipient gets (approx.)</p>
+                  <p className="text-2xl font-semibold text-foreground">
+                    {receiveAmountLocal != null
+                      ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
+                      : "—"}
+                  </p>
+                  {customerRate != null ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Rate: 1 USD → {customerRate} {receiveCurrency}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Minimum receive: {minReceive} {receiveCurrency}{" "}
+                    {transferType === "bank" ? "(bank)" : "(mobile)"}.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  className="mt-auto h-12 w-full gap-2"
+                  disabled={!canProceed2}
+                  onClick={nextStep}
+                >
+                  Recipient details
+                  <ArrowRight className="size-4" />
+                </Button>
               </motion.div>
             ) : null}
 
-            {currentStep === 4 ? (
+            {step === 3 ? (
               <motion.div
-                key="step4"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-1 flex-col items-center justify-center space-y-6 text-center"
+                key="s3"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -12 }}
+                className="flex flex-1 flex-col gap-5"
               >
-                <div className="flex size-24 items-center justify-center rounded-full bg-success-muted text-success shadow-lg">
-                  <CheckCircle2 className="size-12" />
+                {transferType === "mobile_money" ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-foreground">Phone (256…)</label>
+                        <Input
+                          value={mmPhone}
+                          onChange={(e) => setMmPhone(e.target.value)}
+                          placeholder="2567XXXXXXXX"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-foreground">Network</label>
+                        <select
+                          className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                          value={mmNetwork}
+                          onChange={(e) =>
+                            setMmNetwork(e.target.value as "MTN" | "AIRTEL")
+                          }
+                        >
+                          <option value="MTN">MTN</option>
+                          <option value="AIRTEL">AIRTEL</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={validating || !adminToken || !selectedUser}
+                        onClick={() => void onValidateMm()}
+                      >
+                        {validating ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Validating…
+                          </>
+                        ) : (
+                          "Validate account (optional)"
+                        )}
+                      </Button>
+                    </div>
+                    {mmValidation ? (
+                      <SendMoneyValidationCard
+                        v={mmValidation}
+                        applyLabel="Copy validated name into beneficiary field"
+                        onApplyName={() => setRecipientName(mmValidation.accountName.trim())}
+                      />
+                    ) : null}
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">
+                        Recipient name (beneficiary)
+                      </label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Filled automatically when the provider returns a registered name. You can edit
+                        before sending.
+                      </p>
+                      <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">Account number</label>
+                      <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">Bank</label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                        value={bankSortCode}
+                        onChange={(e) => setBankSortCode(e.target.value)}
+                      >
+                        <option value="">Select bank…</option>
+                        {banks.map((b) => (
+                          <option key={`${b.bankCode}-${b.bankName}`} value={b.bankCode}>
+                            {b.bankName} ({b.bankCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={validating || !adminToken || !selectedUser}
+                        onClick={() => void onValidateBank()}
+                      >
+                        {validating ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Validating…
+                          </>
+                        ) : (
+                          "Validate account (optional)"
+                        )}
+                      </Button>
+                    </div>
+                    {bankValidation ? (
+                      <SendMoneyValidationCard
+                        v={bankValidation}
+                        applyLabel="Copy validated name into account holder"
+                        onApplyName={() => setBankHolder(bankValidation.accountName.trim())}
+                      />
+                    ) : null}
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">Account holder</label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Pre-filled from validation when the bank returns an account name.
+                      </p>
+                      <Input value={bankHolder} onChange={(e) => setBankHolder(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-foreground">
+                        Sender phone (256…) — Pegasus msisdn
+                      </label>
+                      <Input
+                        value={senderMsisdn}
+                        onChange={(e) => setSenderMsisdn(e.target.value)}
+                        placeholder="2567XXXXXXXX"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {submitError && step === 3 ? (
+                  <p className="text-sm text-danger" role="alert">
+                    {submitError}
+                  </p>
+                ) : null}
+
+                <Button
+                  type="button"
+                  className="mt-auto h-12 w-full gap-2"
+                  disabled={!canProceed3}
+                  onClick={nextStep}
+                >
+                  Review
+                  <ArrowRight className="size-4" />
+                </Button>
+              </motion.div>
+            ) : null}
+
+            {step === 4 ? (
+              <motion.div
+                key="s4"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -12 }}
+                className="flex flex-1 flex-col gap-6"
+              >
+                <div className="space-y-3 rounded-xl border border-border bg-surface-muted/50 p-5 text-sm">
+                  <Row k="Sender user" v={selectedUser?.user_id ?? "—"} />
+                  <Row k="Rail" v={transferType === "mobile_money" ? "Mobile money" : "Bank"} />
+                  <Row k="Debit (USD)" v={`${sendUsdNum.toFixed(2)} USD`} />
+                  <Row
+                    k="Credit"
+                    v={
+                      receiveAmountLocal != null
+                        ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
+                        : "—"
+                    }
+                  />
+                  <Row k="Recipient" v={recipientName.trim() || "—"} />
+                  {transferType === "mobile_money" ? (
+                    <Row
+                      k="Phone / network"
+                      v={`${normalizeMsisdn(mmPhone)} · ${mmNetwork}`}
+                    />
+                  ) : (
+                    <>
+                      <Row k="Account" v={bankAccount.trim()} />
+                      <Row k="Bank sort code" v={bankSortCode.trim()} />
+                      <Row k="Sender msisdn" v={normalizeMsisdn(senderMsisdn)} />
+                    </>
+                  )}
+                </div>
+
+                {submitError ? (
+                  <div className="rounded-xl border border-danger/40 bg-danger-muted/30 px-4 py-3 text-sm text-danger whitespace-pre-line">
+                    {submitError}
+                  </div>
+                ) : null}
+
+                <Button
+                  type="button"
+                  className="h-12 w-full gap-2"
+                  disabled={submitting || !adminToken || !selectedUser}
+                  onClick={() => void onSubmit()}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="size-5 animate-spin" />
+                      Submitting payment…
+                    </>
+                  ) : (
+                    <>
+                      Send payment
+                      <ArrowRight className="size-5" />
+                    </>
+                  )}
+                </Button>
+              </motion.div>
+            ) : null}
+
+            {step === 5 ? (
+              <motion.div
+                key="s5"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-1 flex-col items-center justify-center gap-5 text-center"
+              >
+                <div className="flex size-20 items-center justify-center rounded-full bg-success-muted text-success">
+                  <CheckCircle2 className="size-10" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-semibold text-foreground md:text-3xl">
-                    Queued for settlement
-                  </h2>
-                  <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                    Debit of{" "}
-                    <span className="font-semibold text-foreground">
-                      ${amount} USD
-                    </span>{" "}
-                    to{" "}
-                    <span className="font-semibold text-foreground">
-                      {selectedRecipient?.name}
-                    </span>{" "}
-                    is on the payment rail. Monitor status in Transactions.
+                  <h2 className="text-xl font-semibold text-foreground">Payment queued</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Provider processing was enqueued (same path as the mobile app). Final status appears in
+                    transactions and the work queue.
                   </p>
+                  {paymentResult?.transactionId ? (
+                    <p className="mt-3 font-mono text-sm text-foreground break-all">
+                      {paymentResult.transactionId}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">—</p>
+                  )}
+                  {paymentResult?.status ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Status: <span className="font-medium text-foreground">{paymentResult.status}</span>
+                    </p>
+                  ) : null}
                 </div>
-                <div className="w-full max-w-sm rounded-xl border border-border bg-surface-muted p-4 text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Internal reference
-                  </p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-foreground">
-                    BB-TRX-948201-X
-                  </p>
-                </div>
-                <div className="flex w-full max-w-sm flex-col gap-2 pt-6">
-                  <Button onClick={() => setCurrentStep(1)}>Another transfer</Button>
-                  <Button variant="secondary">Download receipt</Button>
+                <div className="flex w-full max-w-sm flex-col gap-2 pt-4">
+                  <Link
+                    href="/transactions"
+                    className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "w-full")}
+                  >
+                    Open transactions
+                  </Link>
+                  <Link
+                    href="/queue"
+                    className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "w-full")}
+                  >
+                    Open queue
+                  </Link>
+                  <Button type="button" className="h-11 w-full" onClick={resetFlow}>
+                    New send
+                  </Button>
                 </div>
               </motion.div>
             ) : null}
           </AnimatePresence>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between gap-4 border-b border-border py-2 last:border-0">
+      <span className="text-muted-foreground">{k}</span>
+      <span className="max-w-[60%] text-right font-medium text-foreground break-all">{v}</span>
     </div>
   );
 }
