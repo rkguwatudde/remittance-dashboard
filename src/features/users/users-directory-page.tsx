@@ -323,7 +323,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
   }, [token, selectedIds, bookAmount, loadOps, load]);
 
   const runTrade = React.useCallback(async () => {
-    if (!token || selectedIds.length === 0) return;
+    if (!token) return;
     const usd = Number.parseFloat(tradeUsd);
     if (!Number.isFinite(usd) || usd < 0.01) {
       setBatchSummary("Enter deliver amount USD (min 0.01).");
@@ -332,7 +332,11 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     setBatchRunning(true);
     setBatchSummary(null);
     try {
-      const data = await adminTradeBatch(token, { user_ids: selectedIds, deliver_amount_usd: usd });
+      const payload =
+        selectedIds.length > 0
+          ? { user_ids: selectedIds, deliver_amount_usd: usd }
+          : { deliver_amount_usd: usd };
+      const data = await adminTradeBatch(token, payload);
       setBatchSummary(
         `Trade: ${data.success.length} ok, ${data.failed.length} failed.` +
           (data.failed.length
@@ -522,20 +526,29 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
           ) : null}
 
           {panelAction === "trade" ? (
-            <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-end">
-              <div className="min-w-[200px] flex-1">
-                <label className="text-xs font-medium text-muted-foreground">Deliver amount (USD)</label>
-                <Input
-                  value={tradeUsd}
-                  onChange={(e) => setTradeUsd(e.target.value)}
-                  placeholder="e.g. 100"
-                  className="mt-1"
-                  inputMode="decimal"
-                />
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">With users selected</span>, each gets a customer-scoped
+                quote and trade. <span className="font-medium text-foreground">With none selected</span>, runs one
+                bank/platform trade (platform fiat → bank USDC_SOL trading), using{" "}
+                <span className="font-mono text-xs">CYBRID_BANK_GUID</span> and{" "}
+                <span className="font-mono text-xs">CYBRID_PLATFORM_BANK_ACCOUNT_GUID</span>.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-[200px] flex-1">
+                  <label className="text-xs font-medium text-muted-foreground">Deliver amount (USD)</label>
+                  <Input
+                    value={tradeUsd}
+                    onChange={(e) => setTradeUsd(e.target.value)}
+                    placeholder="e.g. 100"
+                    className="mt-1"
+                    inputMode="decimal"
+                  />
+                </div>
+                <Button type="button" disabled={batchRunning} onClick={() => void runTrade()}>
+                  Run trade
+                </Button>
               </div>
-              <Button type="button" disabled={batchRunning || selectedIds.length === 0} onClick={() => void runTrade()}>
-                Run trade
-              </Button>
             </div>
           ) : null}
 

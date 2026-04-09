@@ -1041,7 +1041,12 @@ export async function adminTransferBook(
 
 export async function adminTradeBatch(
   accessToken: string,
-  body: { user_ids: string[]; deliver_amount_usd: number; idempotency_key?: string },
+  body: {
+    /** Omit or empty = bank/platform trade (no end-user), per Cybrid quote with bank_guid. */
+    user_ids?: string[];
+    deliver_amount_usd: number;
+    idempotency_key?: string;
+  },
 ) {
   const raw = await request<{ success: boolean; data: AdminBatchOpResult }>(
     "/api/v1/admins/trades",
