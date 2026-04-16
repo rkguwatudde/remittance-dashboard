@@ -281,6 +281,82 @@ export async function adminDashboardOverview(accessToken: string) {
   return raw.data;
 }
 
+/** Cybrid dashboard book transfer (customer-driven account picker). */
+export type AdminCybridBookTransferQuoteData = {
+  quote_guid: string;
+  quote: Record<string, unknown>;
+};
+
+export type AdminCybridBookTransferAccount = {
+  guid: string;
+  name: string;
+  type: string;
+  asset: string;
+  state: string;
+};
+
+export type AdminCybridBookTransferAccountsData = {
+  user_id: string;
+  cybrid_customer_id: string;
+  accounts: AdminCybridBookTransferAccount[];
+  default_source_account_guid: string | null;
+  default_destination_account_guid: string | null;
+  warnings: string[];
+};
+
+export type AdminCybridBookTransferExecuteData = {
+  user_id: string;
+  cybrid_customer_id: string;
+  transfer: Record<string, unknown>;
+};
+
+export async function adminCybridBookTransferCustomerAccounts(
+  accessToken: string,
+  userId: string,
+) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferAccountsData }>(
+    `/api/v1/admins/cybrid/book-transfer/users/${encodeURIComponent(userId)}/accounts`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminCybridBookTransferQuote(accessToken: string, amountCents: number) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferQuoteData }>(
+    "/api/v1/admins/cybrid/book-transfer/quote",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: { amount: amountCents },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminCybridBookTransferExecute(
+  accessToken: string,
+  payload: {
+    quote_guid: string;
+    user_id: string;
+    source_account_guid: string;
+    destination_account_guid: string;
+    amount: number;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferExecuteData }>(
+    "/api/v1/admins/cybrid/book-transfer/execute",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: payload,
+    },
+  );
+  return raw.data;
+}
+
 export type AdminBullmqQueueSnapshot =
   | { queue: string; counts: Record<string, number>; paused: boolean }
   | { queue: string; error: string };

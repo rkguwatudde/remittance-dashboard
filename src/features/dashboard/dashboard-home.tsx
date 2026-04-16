@@ -326,6 +326,7 @@ export function DashboardHome() {
         </Card>
       ) : null}
 
+
       {loading && !overview ? <DashboardOverviewPlaceholder /> : null}
 
       {kpis ? (
