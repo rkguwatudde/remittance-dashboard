@@ -357,6 +357,88 @@ export async function adminCybridBookTransferExecute(
   return raw.data;
 }
 
+/** Platform FIAT → USDC_SOL trade + crypto transfer to external wallet (Yellow Card, etc.). */
+export type AdminTradeAndTransferWallet = {
+  guid: string;
+  name: string;
+  asset: string;
+  state: string;
+  address?: string;
+};
+
+export type AdminTradeAndTransferPreviewData = {
+  fiat_balance_cents: number;
+  fiat_account_guid: string;
+  deliver_amount_usd_cents: number;
+  trade_quote_guid: string;
+  trade_quote: Record<string, unknown>;
+  trading_account_guid: string;
+  estimated_usdc_receive_minor: number;
+  destination_external_wallet_guid: string | null;
+  destination_wallet_source: "environment" | "request_body";
+  bank_platform_trade_context: { bank_guid: string; quote_symbol: string };
+};
+
+export type AdminTradeAndTransferExecuteData = {
+  status: "success";
+  idempotent: boolean;
+  operation_id: string;
+  trade_id: string | null;
+  transfer_id: string | null;
+  crypto_quote_guid?: string;
+  trade_quote_guid?: string | null;
+  usdc_deliver_minor?: number;
+  transfer_state?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export async function adminTradeAndTransferExternalWallets(accessToken: string) {
+  const raw = await request<{ success: boolean; data: { wallets: AdminTradeAndTransferWallet[] } }>(
+    "/api/v1/admins/trade-and-transfer/external-wallets",
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminTradeAndTransferPreview(
+  accessToken: string,
+  body: { use_full_fiat_balance: boolean; deliver_amount_usd_cents?: number },
+) {
+  const raw = await request<{ success: boolean; data: AdminTradeAndTransferPreviewData }>(
+    "/api/v1/admins/trade-and-transfer/preview",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
+  return raw.data;
+}
+
+export async function adminTradeAndTransferExecute(
+  accessToken: string,
+  body: {
+    trade_quote_guid: string;
+    deliver_amount_usd_cents: number;
+    /** Omit when remittance API sets `CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID`. */
+    external_wallet_guid?: string;
+    idempotency_key: string;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminTradeAndTransferExecuteData }>(
+    "/api/v1/admins/trade-and-transfer/execute",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
+  return raw.data;
+}
+
 export type AdminBullmqQueueSnapshot =
   | { queue: string; counts: Record<string, number>; paused: boolean }
   | { queue: string; error: string };
