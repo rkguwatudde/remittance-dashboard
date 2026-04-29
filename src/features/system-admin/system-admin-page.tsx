@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   AdminApiError,
+  adminBroadcast,
   adminBanksList,
   adminCreateServiceProvider,
   adminDeleteServiceProvider,
@@ -43,6 +44,7 @@ import {
   adminProviderLogs,
   adminRemittanceAuditLogs,
   adminSystemOverview,
+  type AdminBroadcastTarget,
   type AdminBankListItem,
   type AdminPlatformAuditLogRow,
   type AdminRemittanceAuditLogRow,
@@ -135,6 +137,14 @@ export function SystemAdminPage() {
   const [formActive, setFormActive] = React.useState(false);
   const [formBusy, setFormBusy] = React.useState(false);
   const [formErr, setFormErr] = React.useState<string | null>(null);
+  const [broadcastTitle, setBroadcastTitle] = React.useState("");
+  const [broadcastMessage, setBroadcastMessage] = React.useState("");
+  const [broadcastTarget, setBroadcastTarget] = React.useState<AdminBroadcastTarget>("all_users");
+  const [broadcastTopic, setBroadcastTopic] = React.useState("all_users");
+  const [broadcastUserIdsRaw, setBroadcastUserIdsRaw] = React.useState("");
+  const [broadcastBusy, setBroadcastBusy] = React.useState(false);
+  const [broadcastResult, setBroadcastResult] = React.useState<string | null>(null);
+  const [broadcastErr, setBroadcastErr] = React.useState<string | null>(null);
 
   const withToken = React.useCallback(
     async <T,>(fn: (t: string) => Promise<T>): Promise<T> => {
@@ -361,6 +371,64 @@ export function SystemAdminPage() {
     }
   };
 
+  const submitBroadcast = async () => {
+    const title = broadcastTitle.trim();
+    const message = broadcastMessage.trim();
+    if (!title || !message) {
+      setBroadcastErr("Title and message are required.");
+      return;
+    }
+
+    const payload: {
+      title: string;
+      message: string;
+      target: AdminBroadcastTarget;
+      topic?: string;
+      userIds?: string[];
+    } = {
+      title,
+      message,
+      target: broadcastTarget,
+    };
+
+    if (broadcastTarget === "topic") {
+      const topic = broadcastTopic.trim();
+      if (!topic) {
+        setBroadcastErr("Topic is required when target is topic.");
+        return;
+      }
+      payload.topic = topic;
+    }
+
+    if (broadcastTarget === "userIds") {
+      const userIds = broadcastUserIdsRaw
+        .split(/[\n,]/g)
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (!userIds.length) {
+        setBroadcastErr("Add at least one user ID when target is userIds.");
+        return;
+      }
+      payload.userIds = userIds;
+    }
+
+    setBroadcastBusy(true);
+    setBroadcastErr(null);
+    setBroadcastResult(null);
+    try {
+      const res = await withToken((t) => adminBroadcast(t, payload));
+      setBroadcastResult(
+        `Queued successfully. Target count: ${res.targetCount}.`,
+      );
+    } catch (e) {
+      setBroadcastErr(
+        e instanceof AdminApiError ? e.message : "Failed to queue broadcast.",
+      );
+    } finally {
+      setBroadcastBusy(false);
+    }
+  };
+
   const chartData =
     overview?.apiMetrics.hourly.map((h) => ({
       t: h.label,
@@ -451,6 +519,84 @@ export function SystemAdminPage() {
           </div>
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Admin push broadcast (test)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Title</label>
+              <Input
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value)}
+                placeholder="Maintenance update"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Target</label>
+              <select
+                value={broadcastTarget}
+                onChange={(e) => setBroadcastTarget(e.target.value as AdminBroadcastTarget)}
+                className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-2 text-sm"
+              >
+                <option value="all_users">all_users</option>
+                <option value="topic">topic</option>
+                <option value="userIds">userIds</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Message</label>
+            <textarea
+              value={broadcastMessage}
+              onChange={(e) => setBroadcastMessage(e.target.value)}
+              placeholder="Testing push delivery from admin dashboard."
+              rows={3}
+              className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          {broadcastTarget === "topic" ? (
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Topic</label>
+              <Input
+                value={broadcastTopic}
+                onChange={(e) => setBroadcastTopic(e.target.value)}
+                placeholder="all_users"
+                className="mt-1 font-mono text-xs"
+              />
+            </div>
+          ) : null}
+
+          {broadcastTarget === "userIds" ? (
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">
+                User IDs (comma or newline separated)
+              </label>
+              <textarea
+                value={broadcastUserIdsRaw}
+                onChange={(e) => setBroadcastUserIdsRaw(e.target.value)}
+                placeholder="uuid-1, uuid-2"
+                rows={4}
+                className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          ) : null}
+
+          {broadcastErr ? <p className="text-sm text-danger">{broadcastErr}</p> : null}
+          {broadcastResult ? <p className="text-sm text-success">{broadcastResult}</p> : null}
+
+          <div className="flex justify-end">
+            <Button type="button" disabled={broadcastBusy} onClick={() => void submitBroadcast()}>
+              {broadcastBusy ? <Loader2 className="size-4 animate-spin" /> : "Send broadcast"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Banner + API metrics */}
       <div className="grid gap-4 lg:grid-cols-3">

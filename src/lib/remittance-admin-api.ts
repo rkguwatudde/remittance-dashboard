@@ -232,6 +232,63 @@ export async function adminUpdateTeamMember(
   return raw.data.admin;
 }
 
+export type AdminBroadcastTarget = "all_users" | "topic" | "userIds";
+
+export type AdminBroadcastPayload = {
+  title: string;
+  message: string;
+  target: AdminBroadcastTarget;
+  topic?: string;
+  userIds?: string[];
+  data?: Record<string, string>;
+};
+
+export type AdminBroadcastResult = {
+  queued: boolean;
+  targetCount: number;
+};
+
+export type AdminBroadcastRecipient = {
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  phone: string | null;
+  tokenCount: number;
+};
+
+export async function adminBroadcast(
+  accessToken: string,
+  payload: AdminBroadcastPayload,
+) {
+  const raw = await request<{
+    success: boolean;
+    message: string;
+    data: AdminBroadcastResult;
+  }>("/api/v1/admins/notifications/broadcast", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: payload,
+  });
+  return raw.data;
+}
+
+export async function adminBroadcastRecipients(
+  accessToken: string,
+  params?: { q?: string; limit?: number },
+) {
+  const raw = await request<{ success: boolean; data: { users: AdminBroadcastRecipient[] } }>(
+    `/api/v1/admins/notifications/recipients${buildQuery({
+      q: params?.q,
+      limit: params?.limit,
+    })}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data.users;
+}
+
 export type AdminDashboardRailHealth = {
   status: "healthy" | "degraded" | "unhealthy" | "unknown";
   detail: string;
@@ -1107,6 +1164,69 @@ export async function adminUserDetail(accessToken: string, userId: string) {
   const raw = await request<{ success: boolean; data: AdminUserDetailResponse }>(
     `/api/v1/admins/users/${encodeURIComponent(userId)}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export type AdminPullFundsBankAccount = {
+  guid: string;
+  state: string | null;
+  bank_name: string | null;
+  plaid_account_name: string | null;
+  account_mask: string | null;
+  is_ready: boolean;
+};
+
+export type AdminPullFundsBankAccountsResponse = {
+  user_id: string;
+  customer_guid: string;
+  accounts: AdminPullFundsBankAccount[];
+};
+
+export type AdminPullFundsExecuteResponse = {
+  status: "success";
+  idempotent: boolean;
+  operation_id: string;
+  user_id: string;
+  customer_guid: string;
+  external_bank_account_guid: string;
+  amount_usd: number;
+  note: string | null;
+  cybrid_quote_guid?: string;
+  cybrid_transfer_guid?: string;
+  cybrid_transfer_state?: string;
+  remittance_transaction_id?: string;
+};
+
+export async function adminPullFundsBankAccounts(
+  accessToken: string,
+  userId: string,
+) {
+  const raw = await request<{ success: boolean; data: AdminPullFundsBankAccountsResponse }>(
+    `/api/v1/admins/pull-funds/users/${encodeURIComponent(userId)}/bank-accounts`,
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminPullFundsExecute(
+  accessToken: string,
+  payload: {
+    userId: string;
+    customerGuid: string;
+    externalBankAccountGuid: string;
+    amount: number;
+    note?: string;
+    idempotencyKey?: string;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminPullFundsExecuteResponse }>(
+    "/api/v1/admins/pull-funds",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: payload,
+    },
   );
   return raw.data;
 }
