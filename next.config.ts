@@ -1,9 +1,16 @@
+import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 import type { NextConfig } from "next";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Monorepo parent (`main-app`) when present — not used on Vercel if only this app is deployed (avoids broken tracing / ENOENT). */
+const parentDir = path.join(__dirname, "..");
+const parentHasWorkspaceLockfile = fs.existsSync(
+  path.join(parentDir, "package-lock.json"),
+);
 
 /**
  * When set (e.g. in production), `/api/remittance-backend/*` is proxied to this host.
@@ -14,8 +21,9 @@ const remittanceApiUpstream = process.env.REMITTANCE_API_UPSTREAM?.trim();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  /** Parent workspace (`main-app`) — avoids Next inferring the wrong root when multiple lockfiles exist. */
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  ...(parentHasWorkspaceLockfile
+    ? { outputFileTracingRoot: parentDir }
+    : {}),
   async rewrites() {
     if (!remittanceApiUpstream) return [];
     const base = remittanceApiUpstream.replace(/\/$/, "");
