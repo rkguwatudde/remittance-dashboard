@@ -218,8 +218,8 @@ export function UserDetailPage({ userId }: { userId: string }) {
               Pull Funds
             </Button>
           ) : null}
-          <Link href="/transfers" className={buttonVariants()}>
-            Open transfers
+          <Link href="/transfer?tab=cybrid" className={buttonVariants()}>
+            Open Transfer
           </Link>
         </div>
       </div>

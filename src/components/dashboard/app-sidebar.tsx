@@ -8,8 +8,6 @@ import {
   Bell,
   HelpCircle,
   History,
-  Landmark,
-  Coins,
   LayoutDashboard,
   LogOut,
   Send,
@@ -17,7 +15,6 @@ import {
   ShieldCheck,
   UserCircle2,
   Users,
-  ArrowRightLeft,
 } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -26,12 +23,9 @@ import { cn } from "@/lib/utils";
 const primaryNav = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/queue", label: "Exceptions", icon: ShieldCheck },
-  { href: "/send", label: "Execute", icon: Send },
-  { href: "/transfers", label: "Transfers", icon: ArrowRightLeft },
+  { href: "/transfer?tab=send", label: "Transfers", icon: Send },
   { href: "/users", label: "Users", icon: UserCircle2 },
   { href: "/transactions", label: "Transactions", icon: History },
-  { href: "/book-transfer", label: "Book transfer", icon: Landmark },
-  { href: "/trade-and-transfer", label: "Trade & transfer", icon: Coins },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/recipients", label: "Recipients", icon: Users },
   { href: "/system", label: "System & admin", icon: Activity },
@@ -53,8 +47,11 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
   const { signOut, user } = useAuth();
 
   const path = pathname ?? "";
-  const isActive = (href: string) =>
-    href === "/" ? path === "/" : path.startsWith(href);
+  const isActive = (href: string) => {
+    if (href === "/") return path === "/";
+    const base = href.split("?")[0] ?? href;
+    return path === base || path.startsWith(`${base}/`);
+  };
 
   return (
     <aside

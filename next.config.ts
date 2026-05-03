@@ -1,4 +1,9 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 import type { NextConfig } from "next";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * When set (e.g. in production), `/api/remittance-backend/*` is proxied to this host.
@@ -9,6 +14,8 @@ const remittanceApiUpstream = process.env.REMITTANCE_API_UPSTREAM?.trim();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  /** Parent workspace (`main-app`) — avoids Next inferring the wrong root when multiple lockfiles exist. */
+  outputFileTracingRoot: path.join(__dirname, ".."),
   async rewrites() {
     if (!remittanceApiUpstream) return [];
     const base = remittanceApiUpstream.replace(/\/$/, "");

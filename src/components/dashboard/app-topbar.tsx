@@ -84,7 +84,7 @@ export function AppTopbar({ onOpenMobileNav }: AppTopbarProps) {
         </button>
 
         <Link
-          href="/send"
+          href="/transfer?tab=send"
           className={cn(
             buttonVariants({ size: "sm" }),
             "hidden lg:inline-flex no-underline",

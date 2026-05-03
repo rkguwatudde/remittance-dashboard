@@ -389,7 +389,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:px-6">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-          {transferHub ? "Cybrid" : "Directory"}
+          {transferHub ? "Transfer" : "Directory"}
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           {transferHub ? "Transfers" : "Users"}
@@ -770,10 +770,10 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                       View
                     </Button>
                     <Link
-                      href="/transfers"
+                      href="/transfer?tab=cybrid"
                       className={buttonVariants({ variant: "secondary", size: "sm" })}
                     >
-                      Transfers
+                      Transfer
                     </Link>
                   </div>
                 </td>

@@ -296,14 +296,14 @@ export function DashboardHome() {
             Refresh
           </Button>
           <Link
-            href="/send"
+            href="/transfer?tab=send"
             className={cn(buttonVariants({ size: "sm" }), "gap-2 no-underline")}
           >
             <Send className="size-4" />
             Send money
           </Link>
           <Link
-            href="/send?intent=request"
+            href="/transfer?tab=send&intent=request"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
               "gap-2 no-underline",

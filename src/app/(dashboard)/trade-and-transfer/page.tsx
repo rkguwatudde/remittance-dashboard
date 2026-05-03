@@ -1,5 +1,6 @@
-import { TradeAndTransferPage } from "@/features/trade-and-transfer/trade-and-transfer-page";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return <TradeAndTransferPage />;
+/** Legacy route — trade & transfer is a tab under /transfer */
+export default function TradeAndTransferLegacyPage() {
+  redirect("/transfer?tab=trade");
 }

@@ -344,10 +344,10 @@ export function UserDetailDrawer({
                       </Link>
                     ) : null}
                     <Link
-                      href="/transfers"
+                      href="/transfer?tab=cybrid"
                       className={cn(buttonVariants(), "inline-flex w-full justify-center sm:w-auto")}
                     >
-                      Open transfers
+                      Open Transfer
                     </Link>
                   </div>
                 </div>
