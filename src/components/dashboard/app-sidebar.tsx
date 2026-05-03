@@ -127,5 +127,5 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
         </button>
       </div>
     </aside>
-  );
+);
 }
