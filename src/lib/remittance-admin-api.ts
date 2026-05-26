@@ -99,6 +99,7 @@ export type AdminRefreshResponse = {
   refresh_token: string;
   expires_in: number;
   admin: { id: string; email: string; role: string };
+  password_reset_required?: boolean;
 };
 
 export async function adminLogin(email: string, password: string) {

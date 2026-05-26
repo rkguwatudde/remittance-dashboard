@@ -34,7 +34,7 @@ function initials(email: string): string {
 }
 
 export function SettingsPage() {
-  const { getAccessToken, user } = useAuth();
+  const { getAccessToken, user, clearPasswordResetRequired } = useAuth();
   const isSuperAdmin = useIsSuperAdmin();
 
   const [activeTab, setActiveTab] = React.useState<SettingsTabId>("security");
@@ -76,6 +76,7 @@ export function SettingsPage() {
     setLoading(true);
     try {
       const out = await adminChangePassword(token, current, next);
+      clearPasswordResetRequired();
       setOk(out.message || "Password updated.");
       setCurrent("");
       setNext("");

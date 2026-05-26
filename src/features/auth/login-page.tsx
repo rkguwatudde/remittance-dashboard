@@ -16,7 +16,7 @@ import {
 } from "@/lib/remittance-admin-api";
 
 export function LoginPage() {
-  const { user, isReady, completeSignIn } = useAuth();
+  const { user, isReady, completeSignIn, passwordResetRequired } = useAuth();
   const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
   const [step, setStep] = React.useState<1 | 2>(1);
@@ -29,8 +29,9 @@ export function LoginPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isReady && user) router.replace("/");
-  }, [user, isReady, router]);
+    if (!isReady || !user) return;
+    router.replace(passwordResetRequired ? "/change-password" : "/");
+  }, [user, isReady, passwordResetRequired, router]);
 
   if (!isReady) {
     return (
@@ -77,7 +78,7 @@ export function LoginPage() {
       const digits = otp.replace(/\D/g, "").slice(0, 6);
       const result = await adminVerifyOtp(sessionId, digits);
       completeSignIn(result);
-      router.replace("/");
+      router.replace(result.password_reset_required ? "/change-password" : "/");
     } catch (e) {
       if (e instanceof AdminApiError) {
         setError(e.message);
@@ -211,7 +212,7 @@ export function LoginPage() {
                   </p>
                   {passwordResetHint ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
-                      After signing in you may be required to change your password in Settings.
+                      After verification you will be asked to set a new password before entering the console.
                     </p>
                   ) : null}
                 </div>

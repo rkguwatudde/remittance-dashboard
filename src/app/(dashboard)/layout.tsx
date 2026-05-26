@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { AppTopbar } from "@/components/dashboard/app-topbar";
@@ -13,14 +13,22 @@ export default function DashboardGroupLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isReady } = useAuth();
+  const { user, isReady, passwordResetRequired } = useAuth();
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  const onChangePasswordPage = pathname === "/change-password";
 
   React.useEffect(() => {
     if (!isReady) return;
-    if (!user) router.replace("/login");
-  }, [user, isReady, router]);
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (passwordResetRequired && !onChangePasswordPage) {
+      router.replace("/change-password");
+    }
+  }, [user, isReady, passwordResetRequired, onChangePasswordPage, router]);
 
   if (!isReady) {
     return (
@@ -34,6 +42,14 @@ export default function DashboardGroupLayout({
   }
 
   if (!user) {
+    return null;
+  }
+
+  if (passwordResetRequired && onChangePasswordPage) {
+    return <div className="min-h-dvh bg-background">{children}</div>;
+  }
+
+  if (passwordResetRequired) {
     return null;
   }
 
