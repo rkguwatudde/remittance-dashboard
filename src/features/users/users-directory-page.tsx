@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +34,7 @@ export type UsersDirectoryPageProps = {
 
 export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPageProps) {
   const { getAccessToken } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const token = getAccessToken();
 
   const [q, setQ] = React.useState("");
@@ -769,12 +771,14 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                     >
                       View
                     </Button>
-                    <Link
-                      href="/transfer?tab=cybrid"
-                      className={buttonVariants({ variant: "secondary", size: "sm" })}
-                    >
-                      Transfer
-                    </Link>
+                    {isSuperAdmin ? (
+                      <Link
+                        href="/transfer?tab=cybrid"
+                        className={buttonVariants({ variant: "secondary", size: "sm" })}
+                      >
+                        Transfer
+                      </Link>
+                    ) : null}
                   </div>
                 </td>
               </tr>

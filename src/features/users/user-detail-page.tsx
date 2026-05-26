@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +36,7 @@ function accountDisplayLabel(a: AdminPullFundsBankAccount): string {
 
 export function UserDetailPage({ userId }: { userId: string }) {
   const { getAccessToken, refreshAccessToken, user } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const token = getAccessToken();
   const [tab, setTab] = React.useState<Tab>("profile");
   const [data, setData] = React.useState<AdminUserDetailResponse | null>(null);
@@ -218,9 +220,11 @@ export function UserDetailPage({ userId }: { userId: string }) {
               Pull Funds
             </Button>
           ) : null}
-          <Link href="/transfer?tab=cybrid" className={buttonVariants()}>
-            Open Transfer
-          </Link>
+          {isSuperAdmin ? (
+            <Link href="/transfer?tab=cybrid" className={buttonVariants()}>
+              Open Transfer
+            </Link>
+          ) : null}
         </div>
       </div>
 

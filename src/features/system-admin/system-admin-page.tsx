@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import {
   AdminApiError,
   adminBroadcast,
@@ -72,8 +73,8 @@ function statusBadge(
 }
 
 export function SystemAdminPage() {
-  const { getAccessToken, refreshAccessToken, user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const { getAccessToken, refreshAccessToken } = useAuth();
+  const isSuper = useIsSuperAdmin();
 
   const [overview, setOverview] = React.useState<SystemControlCenterOverview | null>(null);
   const [ovLoading, setOvLoading] = React.useState(true);
@@ -299,6 +300,7 @@ export function SystemAdminPage() {
   };
 
   const startCreateMm = () => {
+    if (!isSuper) return;
     setFormMode("create");
     setFormId(null);
     setFormName("");
@@ -323,6 +325,7 @@ export function SystemAdminPage() {
   };
 
   const submitForm = async () => {
+    if (formMode === "create" && !isSuper) return;
     if (!formName.trim()) {
       setFormErr("Provider name required.");
       return;
@@ -520,83 +523,85 @@ export function SystemAdminPage() {
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Admin push broadcast (test)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground">Title</label>
-              <Input
-                value={broadcastTitle}
-                onChange={(e) => setBroadcastTitle(e.target.value)}
-                placeholder="Maintenance update"
-                className="mt-1"
-              />
+      {isSuper ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Admin push broadcast (test)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Title</label>
+                <Input
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  placeholder="Maintenance update"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Target</label>
+                <select
+                  value={broadcastTarget}
+                  onChange={(e) => setBroadcastTarget(e.target.value as AdminBroadcastTarget)}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-2 text-sm"
+                >
+                  <option value="all_users">all_users</option>
+                  <option value="topic">topic</option>
+                  <option value="userIds">userIds</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground">Target</label>
-              <select
-                value={broadcastTarget}
-                onChange={(e) => setBroadcastTarget(e.target.value as AdminBroadcastTarget)}
-                className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-2 text-sm"
-              >
-                <option value="all_users">all_users</option>
-                <option value="topic">topic</option>
-                <option value="userIds">userIds</option>
-              </select>
-            </div>
-          </div>
 
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Message</label>
-            <textarea
-              value={broadcastMessage}
-              onChange={(e) => setBroadcastMessage(e.target.value)}
-              placeholder="Testing push delivery from admin dashboard."
-              rows={3}
-              className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          {broadcastTarget === "topic" ? (
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground">Topic</label>
-              <Input
-                value={broadcastTopic}
-                onChange={(e) => setBroadcastTopic(e.target.value)}
-                placeholder="all_users"
-                className="mt-1 font-mono text-xs"
-              />
-            </div>
-          ) : null}
-
-          {broadcastTarget === "userIds" ? (
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground">
-                User IDs (comma or newline separated)
-              </label>
+              <label className="text-[11px] font-medium text-muted-foreground">Message</label>
               <textarea
-                value={broadcastUserIdsRaw}
-                onChange={(e) => setBroadcastUserIdsRaw(e.target.value)}
-                placeholder="uuid-1, uuid-2"
-                rows={4}
-                className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+                value={broadcastMessage}
+                onChange={(e) => setBroadcastMessage(e.target.value)}
+                placeholder="Testing push delivery from admin dashboard."
+                rows={3}
+                className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-          ) : null}
 
-          {broadcastErr ? <p className="text-sm text-danger">{broadcastErr}</p> : null}
-          {broadcastResult ? <p className="text-sm text-success">{broadcastResult}</p> : null}
+            {broadcastTarget === "topic" ? (
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Topic</label>
+                <Input
+                  value={broadcastTopic}
+                  onChange={(e) => setBroadcastTopic(e.target.value)}
+                  placeholder="all_users"
+                  className="mt-1 font-mono text-xs"
+                />
+              </div>
+            ) : null}
 
-          <div className="flex justify-end">
-            <Button type="button" disabled={broadcastBusy} onClick={() => void submitBroadcast()}>
-              {broadcastBusy ? <Loader2 className="size-4 animate-spin" /> : "Send broadcast"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            {broadcastTarget === "userIds" ? (
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  User IDs (comma or newline separated)
+                </label>
+                <textarea
+                  value={broadcastUserIdsRaw}
+                  onChange={(e) => setBroadcastUserIdsRaw(e.target.value)}
+                  placeholder="uuid-1, uuid-2"
+                  rows={4}
+                  className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            ) : null}
+
+            {broadcastErr ? <p className="text-sm text-danger">{broadcastErr}</p> : null}
+            {broadcastResult ? <p className="text-sm text-success">{broadcastResult}</p> : null}
+
+            <div className="flex justify-end">
+              <Button type="button" disabled={broadcastBusy} onClick={() => void submitBroadcast()}>
+                {broadcastBusy ? <Loader2 className="size-4 animate-spin" /> : "Send broadcast"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Banner + API metrics */}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -741,7 +746,7 @@ export function SystemAdminPage() {
         </div>
       ) : null}
 
-      {/* Mobile money providers */}
+      {isSuper ? (
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base">Mobile money providers (service_providers)</CardTitle>
@@ -761,10 +766,12 @@ export function SystemAdminPage() {
               <option value="active">Active</option>
               <option value="inactive">Disabled</option>
             </select>
-            <Button type="button" size="sm" className="gap-1" onClick={startCreateMm}>
-              <Plus className="size-4" />
-              Add
-            </Button>
+            {isSuper ? (
+              <Button type="button" size="sm" className="gap-1" onClick={startCreateMm}>
+                <Plus className="size-4" />
+                Add
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
@@ -859,6 +866,7 @@ export function SystemAdminPage() {
           </table>
         </CardContent>
       </Card>
+      ) : null}
 
       {/* Banks */}
       <Card>
@@ -1241,7 +1249,7 @@ export function SystemAdminPage() {
       </Card>
 
       {/* Provider form modal */}
-      {formOpen ? (
+      {formOpen && (formMode !== "create" || isSuper) ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground/30 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-xl">
             <h3 className="text-base font-semibold text-foreground">

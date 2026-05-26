@@ -8,6 +8,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +69,7 @@ export function UserDetailDrawer({
   onFullyClosed,
 }: UserDetailDrawerProps) {
   const { getAccessToken, user } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const token = getAccessToken();
   const [mounted, setMounted] = React.useState(false);
   const [tab, setTab] = React.useState<Tab>("profile");
@@ -343,12 +345,14 @@ export function UserDetailDrawer({
                         Pull Funds
                       </Link>
                     ) : null}
-                    <Link
-                      href="/transfer?tab=cybrid"
-                      className={cn(buttonVariants(), "inline-flex w-full justify-center sm:w-auto")}
-                    >
-                      Open Transfer
-                    </Link>
+                    {isSuperAdmin ? (
+                      <Link
+                        href="/transfer?tab=cybrid"
+                        className={cn(buttonVariants(), "inline-flex w-full justify-center sm:w-auto")}
+                      >
+                        Open Transfer
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               </>

@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { adminChangePassword, AdminApiError } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +35,7 @@ function initials(email: string): string {
 
 export function SettingsPage() {
   const { getAccessToken, user } = useAuth();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const isSuperAdmin = useIsSuperAdmin();
 
   const [activeTab, setActiveTab] = React.useState<SettingsTabId>("security");
 
@@ -106,7 +107,9 @@ export function SettingsPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">Console</p>
             <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Settings</h1>
             <p className="max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-              Switch tabs to manage security, your team, or workspace — one focus at a time.
+              {isSuperAdmin
+                ? "Switch tabs to manage security, your team, or workspace — one focus at a time."
+                : "Switch tabs to manage security or workspace — one focus at a time."}
             </p>
           </div>
 
