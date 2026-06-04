@@ -33,7 +33,7 @@ Open **Vercel** → project for **remittance-dashboard** → **Settings** → **
 | `REMITTANCE_API_UPSTREAM` | `https://remittance.api.borabond.com` |
 | `NEXT_PUBLIC_REMITTANCE_API_URL` | `/api/remittance-backend` |
 
-`next.config.ts` rewrites `/api/remittance-backend/*` → `REMITTANCE_API_UPSTREAM/*` so the browser stays on `remittance.borabond.com`.
+`next.config.ts` no longer uses build-time rewrites. **`src/app/api/remittance-backend/[...path]/route.ts`** proxies at **runtime** using `REMITTANCE_API_UPSTREAM` (server-only env on Vercel).
 
 ### Preview / `dev` branch only (check **Preview**, uncheck Production)
 
@@ -83,6 +83,44 @@ With the **proxy** pattern above, admin calls go to `/api/remittance-backend` on
 2. DevTools → Network → API requests should go to **`/api/remittance-backend/...`** on the **same host**, not `remittance.api.borabond.com`.
 3. On the server, remittance-api should proxy to `127.0.0.1:9002` via `staging-remittance.borabond.com` (see [STAGING-REMITTANCE-DNS-NGINX.md](../../docs/STAGING-REMITTANCE-DNS-NGINX.md)).
 4. Production `https://remittance.borabond.com` must still use production upstream only.
+
+## Troubleshooting login / `500` on `/api/remittance-backend/...`
+
+### How the request flows
+
+```
+Browser  →  remittance-staging.borabond.com/api/remittance-backend/api/v1/admins/auth/login
+         →  Vercel (Next.js proxy route)
+         →  https://staging-remittance.borabond.com/api/v1/admins/auth/login
+         →  EC2 remittance-api :9002
+```
+
+The **remittance API itself is often fine** — check directly:
+
+```bash
+curl -sS https://staging-remittance.borabond.com/health
+curl -sS -X POST https://staging-remittance.borabond.com/api/v1/admins/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@borabond.com","password":"YourPass123!"}'
+```
+
+Expect `401` for wrong credentials, not `500`.
+
+### Common causes of dashboard `500`
+
+| Cause | Fix |
+|-------|-----|
+| **`REMITTANCE_API_UPSTREAM` missing on Vercel Preview** | Set to `https://staging-remittance.borabond.com` (Preview only), then **Redeploy**. |
+| **Vercel Deployment Protection** (SSO on Preview) | **Settings → Deployment Protection** — disable for `remittance-staging.borabond.com`, or allow public access to Preview on that domain. Unauthenticated calls to `/api/remittance-backend/*` fail before the proxy runs. |
+| **No admin user on sandbox DB** | Bootstrap once: `POST /api/v1/admins/auth/bootstrap` on staging API (see remittance admin-auth docs). Wrong password returns **401**, not 500. |
+| **API crash on valid login** | On EC2: `pm2 logs remittance-api --lines 100` during login attempt. |
+
+### Env checklist (Preview / `dev`)
+
+- `REMITTANCE_API_UPSTREAM` = `https://staging-remittance.borabond.com` (no trailing slash)
+- `NEXT_PUBLIC_REMITTANCE_API_URL` = `/api/remittance-backend`
+- Not set to **All Environments** with production values
+- Redeploy Preview after changing either variable
 
 ## Local development
 
