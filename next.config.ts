@@ -13,27 +13,16 @@ const parentHasWorkspaceLockfile = fs.existsSync(
 );
 
 /**
- * When set (e.g. in production), `/api/remittance-backend/*` is proxied to this host.
- * Use with NEXT_PUBLIC_REMITTANCE_API_URL=/api/remittance-backend so the browser stays
- * same-origin and avoids broken duplicate Access-Control-Allow-Origin from CDN/nginx + API.
+ * Browser calls `/api/remittance-backend/*` (NEXT_PUBLIC_REMITTANCE_API_URL).
+ * Proxying is handled at runtime by `src/app/api/remittance-backend/[...path]/route.ts`
+ * using REMITTANCE_API_UPSTREAM (server env). That avoids build-time-only rewrites when
+ * Preview env vars change without a rebuild.
  */
-const remittanceApiUpstream = process.env.REMITTANCE_API_UPSTREAM?.trim();
-
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   ...(parentHasWorkspaceLockfile
     ? { outputFileTracingRoot: parentDir }
     : {}),
-  async rewrites() {
-    if (!remittanceApiUpstream) return [];
-    const base = remittanceApiUpstream.replace(/\/$/, "");
-    return [
-      {
-        source: "/api/remittance-backend/:path*",
-        destination: `${base}/:path*`,
-      },
-    ];
-  },
 };
 
 export default nextConfig;

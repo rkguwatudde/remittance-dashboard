@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getRemittanceApiUpstream } from "@/lib/remittance-api-upstream";
 import { parseJwtUserId, unwrapRemittancePaymentQueued } from "@/lib/remittance-payments-api";
 
-function remittanceBackendBaseUrl(req: NextRequest): string {
-  const from =
-    process.env.REMITTANCE_API_URL?.trim() ||
-    process.env.REMITTANCE_API_UPSTREAM?.trim() ||
-    process.env.NEXT_PUBLIC_REMITTANCE_API_URL?.trim() ||
-    "http://localhost:9002";
-  let u = from.replace(/\/$/, "");
-  if (u.startsWith("/")) {
-    u = `${req.nextUrl.origin}${u}`;
-  }
-  return u;
+function remittanceBackendBaseUrl(): string {
+  return getRemittanceApiUpstream() || "http://localhost:9002";
 }
 
 async function parseJson(res: Response): Promise<unknown> {
@@ -66,7 +58,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const base = remittanceBackendBaseUrl(req);
+  const base = remittanceBackendBaseUrl();
   const verifyRes = await fetch(`${base}/api/v1/admins/dashboard/overview`, {
     headers: { Authorization: `Bearer ${adminToken}` },
   });
