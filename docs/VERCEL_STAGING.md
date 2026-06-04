@@ -106,14 +106,22 @@ curl -sS -X POST https://staging-remittance.borabond.com/api/v1/admins/auth/logi
 
 Expect `401` for wrong credentials, not `500`.
 
+### Diagnostic URL (after deploy)
+
+While signed in to staging, open:
+
+`https://remittance-staging.borabond.com/api/remittance-proxy-status`
+
+You should see JSON like `{ "proxyConfigured": true, "upstreamHost": "staging-remittance.borabond.com", "healthOk": true }`. If `proxyConfigured` is false or `healthOk` is false, fix env/upstream before debugging login.
+
 ### Common causes of dashboard `500`
 
 | Cause | Fix |
 |-------|-----|
-| **`REMITTANCE_API_UPSTREAM` missing on Vercel Preview** | Set to `https://staging-remittance.borabond.com` (Preview only), then **Redeploy**. |
-| **Vercel Deployment Protection** (SSO on Preview) | **Settings → Deployment Protection** — disable for `remittance-staging.borabond.com`, or allow public access to Preview on that domain. Unauthenticated calls to `/api/remittance-backend/*` fail before the proxy runs. |
-| **No admin user on sandbox DB** | Bootstrap once: `POST /api/v1/admins/auth/bootstrap` on staging API (see remittance admin-auth docs). Wrong password returns **401**, not 500. |
-| **API crash on valid login** | On EC2: `pm2 logs remittance-api --lines 100` during login attempt. |
+| **`REMITTANCE_API_UPSTREAM` only on Production in Vercel** | Add a **second** row for Preview (see above), or rely on code default: Preview (`VERCEL_ENV=preview`) uses `https://staging-remittance.borabond.com` when the var is unset. **Redeploy** after code/env changes. |
+| **Vercel Deployment Protection** (SSO on Preview) | **Settings → Deployment Protection → Deployment Protection Exceptions** — add `remittance-staging.borabond.com` so the staging dashboard (and `/api/*`) is publicly reachable. See [Vercel docs](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/deployment-protection-exceptions). |
+| **No admin user on sandbox DB** | Bootstrap once: `POST /api/v1/admins/auth/bootstrap` on staging API. Wrong password returns **401**, not 500. |
+| **API crash on valid login** (correct email/password) | On EC2: `pm2 logs remittance-api --lines 100` during login. Often bad `password_hash` or missing `admin_auth_sessions` table. |
 
 ### Env checklist (Preview / `dev`)
 
