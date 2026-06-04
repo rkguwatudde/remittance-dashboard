@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +34,7 @@ export type UsersDirectoryPageProps = {
 
 export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPageProps) {
   const { getAccessToken } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const token = getAccessToken();
 
   const [q, setQ] = React.useState("");
@@ -323,7 +325,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
   }, [token, selectedIds, bookAmount, loadOps, load]);
 
   const runTrade = React.useCallback(async () => {
-    if (!token || selectedIds.length === 0) return;
+    if (!token) return;
     const usd = Number.parseFloat(tradeUsd);
     if (!Number.isFinite(usd) || usd < 0.01) {
       setBatchSummary("Enter deliver amount USD (min 0.01).");
@@ -332,7 +334,11 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     setBatchRunning(true);
     setBatchSummary(null);
     try {
-      const data = await adminTradeBatch(token, { user_ids: selectedIds, deliver_amount_usd: usd });
+      const payload =
+        selectedIds.length > 0
+          ? { user_ids: selectedIds, deliver_amount_usd: usd }
+          : { deliver_amount_usd: usd };
+      const data = await adminTradeBatch(token, payload);
       setBatchSummary(
         `Trade: ${data.success.length} ok, ${data.failed.length} failed.` +
           (data.failed.length
@@ -385,7 +391,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:px-6">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-          {transferHub ? "Cybrid" : "Directory"}
+          {transferHub ? "Transfer" : "Directory"}
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           {transferHub ? "Transfers" : "Users"}
@@ -522,20 +528,29 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
           ) : null}
 
           {panelAction === "trade" ? (
-            <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-end">
-              <div className="min-w-[200px] flex-1">
-                <label className="text-xs font-medium text-muted-foreground">Deliver amount (USD)</label>
-                <Input
-                  value={tradeUsd}
-                  onChange={(e) => setTradeUsd(e.target.value)}
-                  placeholder="e.g. 100"
-                  className="mt-1"
-                  inputMode="decimal"
-                />
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">With users selected</span>, each gets a customer-scoped
+                quote and trade. <span className="font-medium text-foreground">With none selected</span>, runs one
+                bank/platform trade (platform fiat → bank USDC_SOL trading), using{" "}
+                <span className="font-mono text-xs">CYBRID_BANK_GUID</span> and{" "}
+                <span className="font-mono text-xs">CYBRID_PLATFORM_BANK_ACCOUNT_GUID</span>.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-[200px] flex-1">
+                  <label className="text-xs font-medium text-muted-foreground">Deliver amount (USD)</label>
+                  <Input
+                    value={tradeUsd}
+                    onChange={(e) => setTradeUsd(e.target.value)}
+                    placeholder="e.g. 100"
+                    className="mt-1"
+                    inputMode="decimal"
+                  />
+                </div>
+                <Button type="button" disabled={batchRunning} onClick={() => void runTrade()}>
+                  Run trade
+                </Button>
               </div>
-              <Button type="button" disabled={batchRunning || selectedIds.length === 0} onClick={() => void runTrade()}>
-                Run trade
-              </Button>
             </div>
           ) : null}
 
@@ -756,12 +771,14 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                     >
                       View
                     </Button>
-                    <Link
-                      href="/transfers"
-                      className={buttonVariants({ variant: "secondary", size: "sm" })}
-                    >
-                      Transfers
-                    </Link>
+                    {isSuperAdmin ? (
+                      <Link
+                        href="/transfer?tab=cybrid"
+                        className={buttonVariants({ variant: "secondary", size: "sm" })}
+                      >
+                        Transfer
+                      </Link>
+                    ) : null}
                   </div>
                 </td>
               </tr>

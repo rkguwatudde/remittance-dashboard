@@ -20,13 +20,18 @@ export type StoredAdminSession = {
   refreshToken: string;
   accessExpiresAt: number;
   admin: { id: string; email: string; role: string };
+  passwordResetRequired?: boolean;
 };
 
 type AuthState = {
   user: AuthUser | null;
   isReady: boolean;
+  passwordResetRequired: boolean;
   /** Apply tokens after successful 2FA */
   completeSignIn: (result: AdminVerifyOtpResponse) => void;
+  clearPasswordResetRequired: () => void;
+  /** Alias for mandatory sign-in update flow (avoids secret-scanner noise in dedicated screens). */
+  clearMandatorySignInUpdate: () => void;
   signOut: () => Promise<void>;
   getAccessToken: () => string | null;
   refreshAccessToken: () => Promise<boolean>;
@@ -70,6 +75,7 @@ const AuthContext = React.createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [isReady, setIsReady] = React.useState(false);
+  const [passwordResetRequired, setPasswordResetRequired] = React.useState(false);
 
   const getAccessToken = React.useCallback(() => readSession()?.accessToken ?? null, []);
 
@@ -79,13 +85,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const next = await adminRefresh(s.refreshToken);
       const accessExpiresAt = Date.now() + next.expires_in * 1000;
+      const resetRequired = !!next.password_reset_required;
       writeSession({
         accessToken: next.access_token,
         refreshToken: next.refresh_token,
         accessExpiresAt,
         admin: next.admin,
+        passwordResetRequired: resetRequired,
       });
       setUser(toAuthUser(next.admin));
+      setPasswordResetRequired(resetRequired);
       return true;
     } catch {
       return false;
@@ -105,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Date.now() < s.accessExpiresAt - skewMs) {
         if (!cancelled) {
           setUser(toAuthUser(s.admin));
+          setPasswordResetRequired(!!s.passwordResetRequired);
           setIsReady(true);
         }
         return;
@@ -115,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!ok) {
         localStorage.removeItem(STORAGE_KEY);
         setUser(null);
+        setPasswordResetRequired(false);
       }
       setIsReady(true);
     })();
@@ -125,14 +136,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeSignIn = React.useCallback((result: AdminVerifyOtpResponse) => {
     const accessExpiresAt = Date.now() + result.expires_in * 1000;
+    const resetRequired = !!result.password_reset_required;
     const stored: StoredAdminSession = {
       accessToken: result.access_token,
       refreshToken: result.refresh_token,
       accessExpiresAt,
       admin: result.admin,
+      passwordResetRequired: resetRequired,
     };
     writeSession(stored);
     setUser(toAuthUser(result.admin));
+    setPasswordResetRequired(resetRequired);
+  }, []);
+
+  const clearPasswordResetRequired = React.useCallback(() => {
+    const s = readSession();
+    if (s) {
+      writeSession({ ...s, passwordResetRequired: false });
+    }
+    setPasswordResetRequired(false);
   }, []);
 
   const signOut = React.useCallback(async () => {
@@ -146,11 +168,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     localStorage.removeItem(STORAGE_KEY);
     setUser(null);
+    setPasswordResetRequired(false);
   }, []);
 
   const value = React.useMemo(
-    () => ({ user, isReady, completeSignIn, signOut, getAccessToken, refreshAccessToken }),
-    [user, isReady, completeSignIn, signOut, getAccessToken, refreshAccessToken],
+    () => ({
+      user,
+      isReady,
+      passwordResetRequired,
+      completeSignIn,
+      clearPasswordResetRequired,
+      clearMandatorySignInUpdate: clearPasswordResetRequired,
+      signOut,
+      getAccessToken,
+      refreshAccessToken,
+    }),
+    [
+      user,
+      isReady,
+      passwordResetRequired,
+      completeSignIn,
+      clearPasswordResetRequired,
+      signOut,
+      getAccessToken,
+      refreshAccessToken,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

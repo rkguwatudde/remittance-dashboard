@@ -1,5 +1,6 @@
-import { UsersDirectoryPage } from "@/features/users/users-directory-page";
+import { redirect } from "next/navigation";
 
-export default function TransfersPage() {
-  return <UsersDirectoryPage transferHub />;
+/** Legacy route — Transfer tab under /transfer (Transfers hub) */
+export default function TransfersLegacyPage() {
+  redirect("/transfer?tab=cybrid");
 }

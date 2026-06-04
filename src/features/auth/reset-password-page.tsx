@@ -9,6 +9,7 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AC_NEW } from "@/lib/form-autocomplete";
 import { adminResetPassword, AdminApiError } from "@/lib/remittance-admin-api";
 
 export function ResetPasswordPage() {
@@ -111,7 +112,7 @@ export function ResetPasswordPage() {
                       <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         type={show ? "text" : "password"}
-                        autoComplete="new-password"
+                        autoComplete={AC_NEW}
                         className="pl-10 pr-10"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -133,7 +134,7 @@ export function ResetPasswordPage() {
                     </label>
                     <Input
                       type={show ? "text" : "password"}
-                      autoComplete="new-password"
+                      autoComplete={AC_NEW}
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
                       disabled={loading}

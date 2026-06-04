@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# BoraBond Remittance Dashboard (Next.js)
 
-# Run and deploy your AI Studio app
+Operations console for remittance-api (admin auth, transfers, queue, users).
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/db2ae270-3867-4397-9e29-f4c54566b7b6
+```bash
+npm install
+cp .env.local.example .env.local   # edit if needed
+npm run dev
+```
 
-## Run Locally
+Sandbox API (same as Vercel Preview on `dev`):
 
-**Prerequisites:**  Node.js
+```bash
+npm run dev:sandbox
+```
 
+## Deploy (Vercel)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+| Environment | Branch | Site | API (upstream) |
+|-------------|--------|------|----------------|
+| Production | `main` | `https://remittance.borabond.com` | `https://remittance.api.borabond.com` |
+| Staging | `dev` | `https://remittance-staging.borabond.com` | `https://staging-remittance.borabond.com` |
+
+Step-by-step (mirror **customer-app**): **[docs/VERCEL_STAGING.md](./docs/VERCEL_STAGING.md)**
+
+Backend sandbox: [../docs/remittance-SANDBOX-DEPLOY.md](../docs/remittance-SANDBOX-DEPLOY.md)

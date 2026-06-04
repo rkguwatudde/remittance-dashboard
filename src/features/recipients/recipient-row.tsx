@@ -101,7 +101,7 @@ export function RecipientRow({
         <div className="flex items-center justify-end gap-1">
           <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
             <Link
-              href={`/send?recipient=${encodeURIComponent(row.id)}`}
+              href={`/transfer?tab=send&recipient=${encodeURIComponent(row.id)}`}
               prefetch={false}
               className={cn(
                 buttonVariants({ variant: "secondary", size: "sm" }),

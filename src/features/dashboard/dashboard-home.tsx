@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -196,6 +197,7 @@ function DashboardOverviewPlaceholder() {
 
 export function DashboardHome() {
   const { getAccessToken, refreshAccessToken } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const [overview, setOverview] = React.useState<AdminDashboardOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -295,23 +297,27 @@ export function DashboardHome() {
             )}
             Refresh
           </Button>
-          <Link
-            href="/send"
-            className={cn(buttonVariants({ size: "sm" }), "gap-2 no-underline")}
-          >
-            <Send className="size-4" />
-            Send money
-          </Link>
-          <Link
-            href="/send?intent=request"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "gap-2 no-underline",
-            )}
-          >
-            <ArrowDownLeft className="size-4" />
-            Request money
-          </Link>
+          {isSuperAdmin ? (
+            <>
+              <Link
+                href="/transfer?tab=send"
+                className={cn(buttonVariants({ size: "sm" }), "gap-2 no-underline")}
+              >
+                <Send className="size-4" />
+                Send money
+              </Link>
+              <Link
+                href="/transfer?tab=send&intent=request"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-2 no-underline",
+                )}
+              >
+                <ArrowDownLeft className="size-4" />
+                Request money
+              </Link>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -325,6 +331,7 @@ export function DashboardHome() {
           </CardContent>
         </Card>
       ) : null}
+
 
       {loading && !overview ? <DashboardOverviewPlaceholder /> : null}
 

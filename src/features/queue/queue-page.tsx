@@ -219,7 +219,7 @@ export function QueuePage() {
                     <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Updated</th>
-                    <th className="px-4 py-3">Cybrid transfer</th>
+                    <th className="px-4 py-3">Transfer</th>
                     <th className="px-4 py-3">Error</th>
                   </tr>
                 </thead>

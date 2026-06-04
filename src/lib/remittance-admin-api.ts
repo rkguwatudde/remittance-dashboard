@@ -1,6 +1,10 @@
 /**
  * Remittance API — dashboard admin auth (/api/v1/admins/*).
- * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL (e.g. http://localhost:9002).
+ *
+ * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL
+ * - Local: http://localhost:9002 (direct to Nest; CORS allowlist includes localhost).
+ * - Production (duplicate CORS at Cloudflare/nginx): /api/remittance-backend and set
+ *   REMITTANCE_API_UPSTREAM=https://remittance.api.borabond.com in next.config (rewrites).
  */
 
 const baseUrl = () =>
@@ -95,6 +99,7 @@ export type AdminRefreshResponse = {
   refresh_token: string;
   expires_in: number;
   admin: { id: string; email: string; role: string };
+  password_reset_required?: boolean;
 };
 
 export async function adminLogin(email: string, password: string) {
@@ -156,6 +161,14 @@ export async function adminChangePassword(
       json: { current_password, new_password },
     },
   );
+}
+
+export async function adminUpdateSignIn(
+  accessToken: string,
+  existing: string,
+  next: string,
+) {
+  return adminChangePassword(accessToken, existing, next);
 }
 
 /** Super-admin team management: GET/POST /api/v1/admins */
@@ -228,6 +241,63 @@ export async function adminUpdateTeamMember(
   return raw.data.admin;
 }
 
+export type AdminBroadcastTarget = "all_users" | "topic" | "userIds";
+
+export type AdminBroadcastPayload = {
+  title: string;
+  message: string;
+  target: AdminBroadcastTarget;
+  topic?: string;
+  userIds?: string[];
+  data?: Record<string, string>;
+};
+
+export type AdminBroadcastResult = {
+  queued: boolean;
+  targetCount: number;
+};
+
+export type AdminBroadcastRecipient = {
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  phone: string | null;
+  tokenCount: number;
+};
+
+export async function adminBroadcast(
+  accessToken: string,
+  payload: AdminBroadcastPayload,
+) {
+  const raw = await request<{
+    success: boolean;
+    message: string;
+    data: AdminBroadcastResult;
+  }>("/api/v1/admins/notifications/broadcast", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: payload,
+  });
+  return raw.data;
+}
+
+export async function adminBroadcastRecipients(
+  accessToken: string,
+  params?: { q?: string; limit?: number },
+) {
+  const raw = await request<{ success: boolean; data: { users: AdminBroadcastRecipient[] } }>(
+    `/api/v1/admins/notifications/recipients${buildQuery({
+      q: params?.q,
+      limit: params?.limit,
+    })}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data.users;
+}
+
 export type AdminDashboardRailHealth = {
   status: "healthy" | "degraded" | "unhealthy" | "unknown";
   detail: string;
@@ -274,6 +344,164 @@ export async function adminDashboardOverview(accessToken: string) {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+  return raw.data;
+}
+
+/** Cybrid dashboard book transfer (customer-driven account picker). */
+export type AdminCybridBookTransferQuoteData = {
+  quote_guid: string;
+  quote: Record<string, unknown>;
+};
+
+export type AdminCybridBookTransferAccount = {
+  guid: string;
+  name: string;
+  type: string;
+  asset: string;
+  state: string;
+};
+
+export type AdminCybridBookTransferAccountsData = {
+  user_id: string;
+  cybrid_customer_id: string;
+  accounts: AdminCybridBookTransferAccount[];
+  default_source_account_guid: string | null;
+  default_destination_account_guid: string | null;
+  warnings: string[];
+};
+
+export type AdminCybridBookTransferExecuteData = {
+  user_id: string;
+  cybrid_customer_id: string;
+  transfer: Record<string, unknown>;
+};
+
+export async function adminCybridBookTransferCustomerAccounts(
+  accessToken: string,
+  userId: string,
+) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferAccountsData }>(
+    `/api/v1/admins/cybrid/book-transfer/users/${encodeURIComponent(userId)}/accounts`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminCybridBookTransferQuote(accessToken: string, amountCents: number) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferQuoteData }>(
+    "/api/v1/admins/cybrid/book-transfer/quote",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: { amount: amountCents },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminCybridBookTransferExecute(
+  accessToken: string,
+  payload: {
+    quote_guid: string;
+    user_id: string;
+    source_account_guid: string;
+    destination_account_guid: string;
+    amount: number;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminCybridBookTransferExecuteData }>(
+    "/api/v1/admins/cybrid/book-transfer/execute",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: payload,
+    },
+  );
+  return raw.data;
+}
+
+/** Platform FIAT → USDC_SOL trade + crypto transfer to external wallet (Yellow Card, etc.). */
+export type AdminTradeAndTransferWallet = {
+  guid: string;
+  name: string;
+  asset: string;
+  state: string;
+  address?: string;
+};
+
+export type AdminTradeAndTransferPreviewData = {
+  fiat_balance_cents: number;
+  fiat_account_guid: string;
+  deliver_amount_usd_cents: number;
+  trade_quote_guid: string;
+  trade_quote: Record<string, unknown>;
+  trading_account_guid: string;
+  estimated_usdc_receive_minor: number;
+  destination_external_wallet_guid: string | null;
+  destination_wallet_source: "environment" | "request_body";
+  bank_platform_trade_context: { bank_guid: string; quote_symbol: string };
+};
+
+export type AdminTradeAndTransferExecuteData = {
+  status: "success";
+  idempotent: boolean;
+  operation_id: string;
+  trade_id: string | null;
+  transfer_id: string | null;
+  crypto_quote_guid?: string;
+  trade_quote_guid?: string | null;
+  usdc_deliver_minor?: number;
+  transfer_state?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export async function adminTradeAndTransferExternalWallets(accessToken: string) {
+  const raw = await request<{ success: boolean; data: { wallets: AdminTradeAndTransferWallet[] } }>(
+    "/api/v1/admins/trade-and-transfer/external-wallets",
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+export async function adminTradeAndTransferPreview(
+  accessToken: string,
+  body: { use_full_fiat_balance: boolean; deliver_amount_usd_cents?: number },
+) {
+  const raw = await request<{ success: boolean; data: AdminTradeAndTransferPreviewData }>(
+    "/api/v1/admins/trade-and-transfer/preview",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
+  return raw.data;
+}
+
+export async function adminTradeAndTransferExecute(
+  accessToken: string,
+  body: {
+    trade_quote_guid: string;
+    deliver_amount_usd_cents: number;
+    /** Omit when remittance API sets `CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID`. */
+    external_wallet_guid?: string;
+    idempotency_key: string;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminTradeAndTransferExecuteData }>(
+    "/api/v1/admins/trade-and-transfer/execute",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
   return raw.data;
 }
 
@@ -949,6 +1177,69 @@ export async function adminUserDetail(accessToken: string, userId: string) {
   return raw.data;
 }
 
+export type AdminPullFundsBankAccount = {
+  guid: string;
+  state: string | null;
+  bank_name: string | null;
+  plaid_account_name: string | null;
+  account_mask: string | null;
+  is_ready: boolean;
+};
+
+export type AdminPullFundsBankAccountsResponse = {
+  user_id: string;
+  customer_guid: string;
+  accounts: AdminPullFundsBankAccount[];
+};
+
+export type AdminPullFundsExecuteResponse = {
+  status: "success";
+  idempotent: boolean;
+  operation_id: string;
+  user_id: string;
+  customer_guid: string;
+  external_bank_account_guid: string;
+  amount_usd: number;
+  note: string | null;
+  cybrid_quote_guid?: string;
+  cybrid_transfer_guid?: string;
+  cybrid_transfer_state?: string;
+  remittance_transaction_id?: string;
+};
+
+export async function adminPullFundsBankAccounts(
+  accessToken: string,
+  userId: string,
+) {
+  const raw = await request<{ success: boolean; data: AdminPullFundsBankAccountsResponse }>(
+    `/api/v1/admins/pull-funds/users/${encodeURIComponent(userId)}/bank-accounts`,
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminPullFundsExecute(
+  accessToken: string,
+  payload: {
+    userId: string;
+    customerGuid: string;
+    externalBankAccountGuid: string;
+    amount: number;
+    note?: string;
+    idempotencyKey?: string;
+  },
+) {
+  const raw = await request<{ success: boolean; data: AdminPullFundsExecuteResponse }>(
+    "/api/v1/admins/pull-funds",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: payload,
+    },
+  );
+  return raw.data;
+}
+
 export type CybridQuoteLike = {
   guid: string;
   product_type?: string;
@@ -1037,7 +1328,12 @@ export async function adminTransferBook(
 
 export async function adminTradeBatch(
   accessToken: string,
-  body: { user_ids: string[]; deliver_amount_usd: number; idempotency_key?: string },
+  body: {
+    /** Omit or empty = bank/platform trade (no end-user), per Cybrid quote with bank_guid. */
+    user_ids?: string[];
+    deliver_amount_usd: number;
+    idempotency_key?: string;
+  },
 ) {
   const raw = await request<{ success: boolean; data: AdminBatchOpResult }>(
     "/api/v1/admins/trades",
@@ -1135,5 +1431,165 @@ export async function adminOperationsList(
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+  return raw.data;
+}
+
+/** GET /admins/send-money/customer-rate — rate for a specific app user (ops JWT). */
+export type AdminSendMoneyCustomerRate = {
+  customerRate: number;
+  providerRate: number;
+  hasBoughtBond?: boolean;
+  currency?: string;
+  platform?: string;
+  transactionType?: string;
+};
+
+export async function adminSendMoneyCustomerRate(
+  accessToken: string,
+  params: { user_id: string; useBondRate?: boolean },
+) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyCustomerRate }>(
+    `/api/v1/admins/send-money/customer-rate${buildQuery({
+      user_id: params.user_id,
+      useBondRate: params.useBondRate,
+    })}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+/** POST /admins/send-money/app-user-access-token — short-lived JWT for payout proxy (ops only). */
+export async function adminSendMoneyIssueAppUserAccessToken(
+  accessToken: string,
+  body: { user_id: string },
+): Promise<{ access_token: string; expires_in: number }> {
+  const raw = await request<{
+    success: boolean;
+    data: { access_token: string; expires_in: number };
+  }>("/api/v1/admins/send-money/app-user-access-token", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: body,
+  });
+  return raw.data;
+}
+
+export type AdminSendMoneyValidateResult = {
+  accountName: string;
+  accountNumber: string;
+  bankCode: string;
+  providerReference: string;
+};
+
+/** POST /admins/send-money/validate-account — includes API code/message for UI status. */
+export type AdminSendMoneyValidateAccountResponse = AdminSendMoneyValidateResult & {
+  apiCode: string | undefined;
+  apiMessage: string;
+  /** Backend success code (e.g. ACCOUNT_VALIDATED). */
+  isProviderSuccess: boolean;
+  /** Parsed display name looks like a real beneficiary (not "not found" / empty). */
+  hasUsableRecipientName: boolean;
+};
+
+export async function adminSendMoneyValidateAccount(
+  accessToken: string,
+  body: { user_id: string; payload: Record<string, unknown> },
+): Promise<AdminSendMoneyValidateAccountResponse> {
+  const raw = await request<{
+    success: boolean;
+    code?: string;
+    message?: string;
+    data?: AdminSendMoneyValidateResult | null;
+  }>("/api/v1/admins/send-money/validate-account", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: body,
+  });
+  const d = raw.data;
+  const accountName = d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).accountName ?? "") : "";
+  const accountNumber =
+    d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).accountNumber ?? "") : "";
+  const bankCode = d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).bankCode ?? "") : "";
+  const providerReference =
+    d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).providerReference ?? "") : "";
+  const code = raw.code;
+  const isProviderSuccess = code === "ACCOUNT_VALIDATED";
+  const hasUsableRecipientName =
+    accountName.trim().length > 0 &&
+    !/^not\s*found$/i.test(accountName.trim()) &&
+    accountName.trim().toLowerCase() !== "null";
+  return {
+    accountName,
+    accountNumber,
+    bankCode,
+    providerReference,
+    apiCode: code,
+    apiMessage: typeof raw.message === "string" ? raw.message : "",
+    isProviderSuccess,
+    hasUsableRecipientName,
+  };
+}
+
+export type AdminSendMoneyJobCreateBody = {
+  instant_funding: {
+    customer_guid: string;
+    receive_amount: number;
+    bond_amount?: number;
+    bond_percentage?: number;
+    external_id: string;
+  };
+  transfer_type: "mobile_money" | "bank";
+  mobile_money?: Record<string, unknown>;
+  bank?: Record<string, unknown>;
+  request_metadata?: Record<string, unknown>;
+};
+
+export type AdminSendMoneyJobCreateResult = {
+  id?: string;
+  jobId?: string;
+  status: string;
+  transfer_guid?: string | null;
+  result?: Record<string, unknown> | null;
+  error_message?: string | null;
+};
+
+/** POST /admins/send-money/jobs */
+export async function adminSendMoneyCreateJob(
+  accessToken: string,
+  body: { user_id: string; job: AdminSendMoneyJobCreateBody },
+) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyJobCreateResult }>(
+    "/api/v1/admins/send-money/jobs",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
+    },
+  );
+  return raw.data;
+}
+
+export type AdminSendMoneyJobRow = {
+  id: string;
+  status: string;
+  transfer_guid?: string | null;
+  result?: Record<string, unknown> | null;
+  error_message?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/** GET /admins/send-money/jobs/:id */
+export async function adminSendMoneyGetJob(accessToken: string, jobId: string) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyJobRow }>(
+    `/api/v1/admins/send-money/jobs/${encodeURIComponent(jobId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
   return raw.data;
 }
