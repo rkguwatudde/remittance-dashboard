@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Legacy route — Cybrid actions moved to /transfers. */
+/** Legacy route — Cybrid actions under Transfers → Transfer tab. */
 export default function OrchestrationRedirectPage() {
-  redirect("/transfers");
+  redirect("/transfer?tab=cybrid");
 }

@@ -8,6 +8,7 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AC_USERNAME } from "@/lib/form-autocomplete";
 import { adminForgotPassword, AdminApiError } from "@/lib/remittance-admin-api";
 
 export function ForgotPasswordPage() {
@@ -84,7 +85,7 @@ export function ForgotPasswordPage() {
                       <Input
                         id="email"
                         type="email"
-                        autoComplete="username"
+                        autoComplete={AC_USERNAME}
                         className="pl-10"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}

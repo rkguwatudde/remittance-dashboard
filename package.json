@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:sandbox": "REMITTANCE_API_UPSTREAM=https://staging-remittance.borabond.com NEXT_PUBLIC_REMITTANCE_API_URL=/api/remittance-backend next dev",
     "dev:turbo": "next dev --turbopack",
     "dev:fresh": "npm run clean && next dev",
     "build": "next build",

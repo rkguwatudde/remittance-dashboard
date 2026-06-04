@@ -15,21 +15,20 @@ import {
   ShieldCheck,
   UserCircle2,
   Users,
-  ArrowRightLeft,
 } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { cn } from "@/lib/utils";
 
 const primaryNav = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/queue", label: "Exceptions", icon: ShieldCheck },
-  { href: "/send", label: "Execute", icon: Send },
-  { href: "/transfers", label: "Transfers", icon: ArrowRightLeft },
+  { href: "/transfer?tab=send", label: "Transfers", icon: Send, superAdminOnly: true },
   { href: "/users", label: "Users", icon: UserCircle2 },
   { href: "/transactions", label: "Transactions", icon: History },
-  { href: "/notifications", label: "Notifications", icon: Bell },
-  { href: "/recipients", label: "Recipients", icon: Users },
+  { href: "/notifications", label: "Notifications", icon: Bell, superAdminOnly: true },
+  { href: "/recipients", label: "Recipients", icon: Users, superAdminOnly: true },
   { href: "/system", label: "System & admin", icon: Activity },
 ] as const;
 
@@ -47,10 +46,18 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
   const pathname = usePathname();
   const router = useRouter();
   const { signOut, user } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
+
+  const visiblePrimaryNav = primaryNav.filter(
+    (item) => !("superAdminOnly" in item && item.superAdminOnly) || isSuperAdmin,
+  );
 
   const path = pathname ?? "";
-  const isActive = (href: string) =>
-    href === "/" ? path === "/" : path.startsWith(href);
+  const isActive = (href: string) => {
+    if (href === "/") return path === "/";
+    const base = href.split("?")[0] ?? href;
+    return path === base || path.startsWith(`${base}/`);
+  };
 
   return (
     <aside
@@ -72,7 +79,7 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {primaryNav.map((item) => (
+        {visiblePrimaryNav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -126,5 +133,5 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
         </button>
       </div>
     </aside>
-  );
+);
 }

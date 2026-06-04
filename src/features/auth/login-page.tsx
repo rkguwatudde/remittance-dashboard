@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AC_EXISTING, AC_OTP, AC_USERNAME } from "@/lib/form-autocomplete";
 import {
   adminLogin,
   adminVerifyOtp,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/remittance-admin-api";
 
 export function LoginPage() {
-  const { user, isReady, completeSignIn } = useAuth();
+  const { user, isReady, completeSignIn, passwordResetRequired } = useAuth();
   const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
   const [step, setStep] = React.useState<1 | 2>(1);
@@ -29,8 +30,9 @@ export function LoginPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isReady && user) router.replace("/");
-  }, [user, isReady, router]);
+    if (!isReady || !user) return;
+    router.replace(passwordResetRequired ? "/change-password" : "/");
+  }, [user, isReady, passwordResetRequired, router]);
 
   if (!isReady) {
     return (
@@ -77,7 +79,7 @@ export function LoginPage() {
       const digits = otp.replace(/\D/g, "").slice(0, 6);
       const result = await adminVerifyOtp(sessionId, digits);
       completeSignIn(result);
-      router.replace("/");
+      router.replace(result.password_reset_required ? "/change-password" : "/");
     } catch (e) {
       if (e instanceof AdminApiError) {
         setError(e.message);
@@ -136,7 +138,7 @@ export function LoginPage() {
                     <Input
                       id="email"
                       type="email"
-                      autoComplete="username"
+                      autoComplete={AC_USERNAME}
                       placeholder="you@borabond.com"
                       className="pl-10"
                       value={email}
@@ -158,7 +160,7 @@ export function LoginPage() {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
+                      autoComplete={AC_EXISTING}
                       placeholder="••••••••"
                       className="pl-10 pr-10"
                       value={password}
@@ -211,7 +213,7 @@ export function LoginPage() {
                   </p>
                   {passwordResetHint ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
-                      After signing in you may be required to change your password in Settings.
+                      After verification you will be asked to set a new password before entering the console.
                     </p>
                   ) : null}
                 </div>
@@ -226,7 +228,7 @@ export function LoginPage() {
                   <Input
                     id="otp"
                     inputMode="numeric"
-                    autoComplete="one-time-code"
+                    autoComplete={AC_OTP}
                     maxLength={6}
                     placeholder="000000"
                     className="h-14 text-center text-2xl font-semibold tracking-[0.4em]"

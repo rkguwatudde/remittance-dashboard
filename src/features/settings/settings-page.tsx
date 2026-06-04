@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
+import { AC_EXISTING, AC_NEW } from "@/lib/form-autocomplete";
 import { adminChangePassword, AdminApiError } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
 
@@ -33,24 +35,26 @@ function initials(email: string): string {
 }
 
 export function SettingsPage() {
-  const { getAccessToken, user } = useAuth();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const { getAccessToken, user, clearPasswordResetRequired } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
 
   const [activeTab, setActiveTab] = React.useState<SettingsTabId>("security");
 
-  const [current, setCurrent] = React.useState("");
-  const [next, setNext] = React.useState("");
-  const [confirm, setConfirm] = React.useState("");
+  const [existingSignIn, setExistingSignIn] = React.useState("");
+  const [newSignInSecret, setNewSignInSecret] = React.useState("");
+  const [confirmSignInSecret, setConfirmSignInSecret] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [ok, setOk] = React.useState<string | null>(null);
 
-  const pwdLenOk = next.length >= 12;
-  const pwdMatchOk = next.length > 0 && next === confirm;
-  const hasUpper = /[A-Z]/.test(next);
-  const hasLower = /[a-z]/.test(next);
-  const hasNum = /\d/.test(next);
-  const hasSym = /[^A-Za-z0-9]/.test(next);
+  const pwdLenOk = newSignInSecret.length >= 12;
+  const hasExistingSignIn = existingSignIn.length > 0;
+  const hasNewSignInSecret = newSignInSecret.length > 0;
+  const pwdMatchOk = newSignInSecret.length > 0 && newSignInSecret === confirmSignInSecret;
+  const hasUpper = /[A-Z]/.test(newSignInSecret);
+  const hasLower = /[a-z]/.test(newSignInSecret);
+  const hasNum = /\d/.test(newSignInSecret);
+  const hasSym = /[^A-Za-z0-9]/.test(newSignInSecret);
   const complexityOk = hasUpper && hasLower && hasNum && hasSym;
 
   React.useEffect(() => {
@@ -74,11 +78,12 @@ export function SettingsPage() {
     }
     setLoading(true);
     try {
-      const out = await adminChangePassword(token, current, next);
+      const out = await adminChangePassword(token, existingSignIn, newSignInSecret);
+      clearPasswordResetRequired();
       setOk(out.message || "Password updated.");
-      setCurrent("");
-      setNext("");
-      setConfirm("");
+      setExistingSignIn("");
+      setNewSignInSecret("");
+      setConfirmSignInSecret("");
     } catch (err) {
       if (err instanceof AdminApiError) {
         setError(err.message);
@@ -106,7 +111,9 @@ export function SettingsPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">Console</p>
             <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Settings</h1>
             <p className="max-w-xl text-[15px] leading-relaxed text-muted-foreground">
-              Switch tabs to manage security, your team, or workspace — one focus at a time.
+              {isSuperAdmin
+                ? "Switch tabs to manage security, your team, or workspace — one focus at a time."
+                : "Switch tabs to manage security or workspace — one focus at a time."}
             </p>
           </div>
 
@@ -215,14 +222,14 @@ export function SettingsPage() {
 
                   <div className="space-y-2">
                     <label htmlFor="pwd-current" className="text-xs font-medium text-foreground">
-                      Current password
+                      Existing sign-in
                     </label>
                     <Input
                       id="pwd-current"
                       type="password"
-                      autoComplete="current-password"
-                      value={current}
-                      onChange={(e) => setCurrent(e.target.value)}
+                      autoComplete={AC_EXISTING}
+                      value={existingSignIn}
+                      onChange={(e) => setExistingSignIn(e.target.value)}
                       disabled={loading}
                       className="settings-security-password-field"
                     />
@@ -234,9 +241,9 @@ export function SettingsPage() {
                     <Input
                       id="pwd-new"
                       type="password"
-                      autoComplete="new-password"
-                      value={next}
-                      onChange={(e) => setNext(e.target.value)}
+                      autoComplete={AC_NEW}
+                      value={newSignInSecret}
+                      onChange={(e) => setNewSignInSecret(e.target.value)}
                       disabled={loading}
                       className="settings-security-password-field"
                     />
@@ -248,9 +255,9 @@ export function SettingsPage() {
                     <Input
                       id="pwd-confirm"
                       type="password"
-                      autoComplete="new-password"
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
+                      autoComplete={AC_NEW}
+                      value={confirmSignInSecret}
+                      onChange={(e) => setConfirmSignInSecret(e.target.value)}
                       disabled={loading}
                       className="settings-security-password-field"
                     />
@@ -259,7 +266,14 @@ export function SettingsPage() {
                   <div className="flex flex-wrap items-center gap-3 pt-1">
                     <Button
                       type="submit"
-                      disabled={loading || !current || !next || !pwdLenOk || !pwdMatchOk || !complexityOk}
+                      disabled={
+                        loading ||
+                        !hasExistingSignIn ||
+                        !hasNewSignInSecret ||
+                        !pwdLenOk ||
+                        !pwdMatchOk ||
+                        !complexityOk
+                      }
                       className="h-11 min-w-[160px] gap-2 shadow-md shadow-primary/20"
                     >
                       {loading ? (
@@ -311,7 +325,7 @@ export function SettingsPage() {
               id="workspace-panel-inner"
               icon={Sparkles}
               title="Workspace"
-              description="Soon: feature flags, API environment pointers, and saved views for your operators."
+              description="Send money on Execute uses admin routes on the remittance API; no separate app-user token is required."
             >
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface-muted/30 px-6 py-14 text-center dark:bg-surface-muted/15">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-primary-muted text-primary">
@@ -319,7 +333,7 @@ export function SettingsPage() {
                 </div>
                 <p className="mt-5 max-w-md text-sm font-medium text-foreground">Configuration hub</p>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  Connect your config service or feature flag provider to centralize rollout controls for this console.
+                  More workspace options (feature flags, saved views) can plug in here later.
                 </p>
                 <Badge variant="outline" className="mt-6 text-[10px] font-normal uppercase tracking-wider">
                   Coming soon

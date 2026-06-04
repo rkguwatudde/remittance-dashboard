@@ -8,6 +8,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,6 +48,13 @@ function DetailItem({
 
 type Tab = "profile" | "cybrid" | "activity";
 
+function normalizeRole(role?: string | null): string {
+  return String(role || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toUpperCase();
+}
+
 type UserDetailDrawerProps = {
   open: boolean;
   userId: string | null;
@@ -60,7 +68,8 @@ export function UserDetailDrawer({
   onClose,
   onFullyClosed,
 }: UserDetailDrawerProps) {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, user } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
   const token = getAccessToken();
   const [mounted, setMounted] = React.useState(false);
   const [tab, setTab] = React.useState<Tab>("profile");
@@ -133,6 +142,8 @@ export function UserDetailDrawer({
 
   const p = data?.profile;
   const linked = Boolean(data?.cybrid?.cybrid_customer_id);
+  const role = normalizeRole(user?.role);
+  const canPullFunds = role === "SUPER_ADMIN" || role === "FINANCE_ADMIN";
 
   const content = (
     <AnimatePresence
@@ -325,12 +336,24 @@ export function UserDetailDrawer({
                 </div>
 
                 <div className="border-t border-border bg-surface-muted/40 px-5 py-4">
-                  <Link
-                    href="/transfers"
-                    className={cn(buttonVariants(), "inline-flex w-full justify-center sm:w-auto")}
-                  >
-                    Open transfers
-                  </Link>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    {canPullFunds && displayUserId ? (
+                      <Link
+                        href={`/users/${encodeURIComponent(displayUserId)}`}
+                        className={cn(buttonVariants({ variant: "outline" }), "inline-flex w-full justify-center sm:w-auto")}
+                      >
+                        Pull Funds
+                      </Link>
+                    ) : null}
+                    {isSuperAdmin ? (
+                      <Link
+                        href="/transfer?tab=cybrid"
+                        className={cn(buttonVariants(), "inline-flex w-full justify-center sm:w-auto")}
+                      >
+                        Open Transfer
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
               </>
             ) : null}
