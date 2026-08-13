@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
+import { isHtmlPayload, messageForHtmlUpstream } from "@/lib/html-api-error";
 import { getRemittanceApiUpstream } from "@/lib/remittance-api-upstream";
 
 function gatewayBaseUrl(): string {
@@ -10,6 +11,12 @@ function gatewayBaseUrl(): string {
 async function parseJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
+  if (isHtmlPayload(text)) {
+    return {
+      message: messageForHtmlUpstream(text),
+      code: "UPSTREAM_HTML_ERROR",
+    };
+  }
   try {
     return JSON.parse(text) as unknown;
   } catch {

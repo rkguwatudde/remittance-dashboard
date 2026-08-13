@@ -4,10 +4,17 @@
  */
 
 import { AdminApiError } from "@/lib/remittance-admin-api";
+import { isHtmlPayload, messageForHtmlUpstream } from "@/lib/html-api-error";
 
 async function parseJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
+  if (isHtmlPayload(text)) {
+    return {
+      message: messageForHtmlUpstream(text),
+      code: "UPSTREAM_HTML_ERROR",
+    };
+  }
   try {
     return JSON.parse(text) as unknown;
   } catch {

@@ -112,7 +112,7 @@ You should see JSON like `{ "proxyConfigured": true, "upstreamHost": "staging-ap
 
 | Cause | Fix |
 |-------|-----|
-| **`REMITTANCE_API_UPSTREAM` only on Production in Vercel** | Add a **second** row for Preview (see above), or rely on code default: Preview (`VERCEL_ENV=preview`) uses `https://staging-api.borabond.com` when the var is unset. **Redeploy** after code/env changes. |
+| **Cloudflare 522 / HTML error from `staging-remittance.borabond.com`** | That host is the **retired remittance Nest origin** (`:9002`). It is down. Set Preview `REMITTANCE_API_UPSTREAM` to `https://staging-api.borabond.com` and `NEXT_PUBLIC_REMITTANCE_API_URL` to `/api/remittance-backend`, then redeploy. Do not point the dashboard at `staging-remittance.borabond.com`. |
 | **Vercel Deployment Protection** (SSO on Preview) | **Settings → Deployment Protection → Deployment Protection Exceptions** — add `remittance-staging.borabond.com` so the staging dashboard (and `/api/*`) is publicly reachable. See [Vercel docs](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/deployment-protection-exceptions). |
 | **No admin user on sandbox DB** | Apply staff migration into `identity.staff_accounts`, or bootstrap once: `POST /api/v1/admin/auth/bootstrap` on identity-service (env-gated). Wrong password returns **401**, not 500. |
 | **API crash on valid login** (correct email/password) | Check `api-gateway` then `identity-service` logs. Often JWT secret mismatch (`ADMIN_JWT_SECRET`) or empty `identity.staff_accounts`. |

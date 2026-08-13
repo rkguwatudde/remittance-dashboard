@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { isHtmlPayload, messageForHtmlUpstream } from "@/lib/html-api-error";
 import {
   getRemittanceApiUpstream,
   getRemittanceApiUpstreamLabel,
@@ -67,9 +68,41 @@ async function proxyToRemittanceApi(req: NextRequest, pathSegments: string[]) {
       );
     }
 
+    const contentType = upstreamRes.headers.get("content-type") || "";
+    if (contentType.includes("text/html")) {
+      const html = await upstreamRes.text();
+      return NextResponse.json(
+        {
+          success: false,
+          code: "UPSTREAM_HTML_ERROR",
+          message: messageForHtmlUpstream(html, getRemittanceApiUpstreamLabel()),
+        },
+        { status: 502 },
+      );
+    }
+
+    if (!contentType.includes("json")) {
+      const text = await upstreamRes.text();
+      if (isHtmlPayload(text)) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "UPSTREAM_HTML_ERROR",
+            message: messageForHtmlUpstream(text, getRemittanceApiUpstreamLabel()),
+          },
+          { status: 502 },
+        );
+      }
+      const responseHeaders = new Headers();
+      if (contentType) responseHeaders.set("content-type", contentType);
+      return new NextResponse(text, {
+        status: upstreamRes.status,
+        headers: responseHeaders,
+      });
+    }
+
     const responseHeaders = new Headers();
-    const contentType = upstreamRes.headers.get("content-type");
-    if (contentType) responseHeaders.set("content-type", contentType);
+    responseHeaders.set("content-type", contentType);
 
     return new NextResponse(upstreamRes.body, {
       status: upstreamRes.status,
