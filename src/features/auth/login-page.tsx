@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { BoraBondLockup, BoraBondMark } from "@/components/brand/borabond-logo";
 import { AC_EXISTING, AC_OTP, AC_USERNAME } from "@/lib/form-autocomplete";
 import {
   adminLogin,
@@ -36,8 +37,9 @@ export function LoginPage() {
 
   if (!isReady) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-muted-foreground">
-        Loading…
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
+        <BoraBondMark size="lg" priority />
+        <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     );
   }
@@ -94,19 +96,18 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-surface-muted/40 px-4 py-10">
       <div className="w-full max-w-[440px] space-y-8">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/25">
-            BB
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              BoraBond Operations
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Internal console for remittance settlement, exceptions, and rail
-              health.
-            </p>
-          </div>
+        <div className="space-y-3">
+          <BoraBondLockup
+            size="lg"
+            stacked
+            href={null}
+            subtitle="Operations console"
+            priority
+          />
+          <p className="text-center text-sm text-muted-foreground">
+            Internal console for remittance settlement, exceptions, and rail
+            health.
+          </p>
         </div>
 
         <Card>

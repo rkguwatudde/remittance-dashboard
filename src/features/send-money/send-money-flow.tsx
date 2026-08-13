@@ -23,6 +23,8 @@ import {
   adminUserDetail,
   adminSendMoneyCustomerRate,
   adminSendMoneyValidateAccount,
+  adminSendMoneyOtpChallenge,
+  adminSendMoneyOtpVerify,
   AdminApiError,
   type AdminBankListItem,
   type AdminSendMoneyValidateAccountResponse,
@@ -31,12 +33,13 @@ import {
 } from "@/lib/remittance-admin-api";
 import { postRemittancePaymentsViaDashboardProxy } from "@/lib/remittance-payments-api";
 import { UserSelector } from "@/features/users/user-selector";
+import { SendMoneyOtpDialog } from "./send-money-otp-dialog";
 
 const STEPS = [
   { id: 1, title: "Sender", description: "App user" },
   { id: 2, title: "Amount", description: "USD → receive" },
   { id: 3, title: "Recipient", description: "MM / bank" },
-  { id: 4, title: "Review", description: "Submit payment" },
+  { id: 4, title: "Review", description: "Confirm" },
   { id: 5, title: "Result", description: "Queued" },
 ] as const;
 
@@ -62,6 +65,12 @@ function buildRequestMetadata(): Record<string, unknown> {
     riskScore: 0,
     riskLevel: "LOW",
   };
+}
+
+function newSendMoneyIdempotencyKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `ops-send-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 function SendMoneyValidationCard({
@@ -177,7 +186,15 @@ export function SendMoneyFlow() {
 
   const [receiveAmountLocal, setReceiveAmountLocal] = React.useState<number | null>(null);
 
-  const bondPctNum = Math.min(100, Math.max(0, Number(bondPercent) || 0));
+  const sendOnlyCustomer =
+    selectedUser?.product_intent === "send_only" ||
+    selectedUser?.account_purpose === "SEND_MONEY_ONLY" ||
+    userDetail?.profile.product_intent === "send_only" ||
+    userDetail?.profile.account_purpose === "SEND_MONEY_ONLY";
+
+  const bondPctNum = sendOnlyCustomer
+    ? 0
+    : Math.min(100, Math.max(0, Number(bondPercent) || 0));
   const sendUsdNum = Number(sendUsd) || 0;
   const useBondRate = bondPctNum > 0;
 
@@ -252,14 +269,34 @@ export function SendMoneyFlow() {
     transactionId: string;
     status: string;
   } | null>(null);
+  const [otpChallengeId, setOtpChallengeId] = React.useState<string | null>(null);
+  const [otpDestination, setOtpDestination] = React.useState("info@borabond.com");
+  const [otpCode, setOtpCode] = React.useState("");
+  const [otpSending, setOtpSending] = React.useState(false);
+  const [otpDialogOpen, setOtpDialogOpen] = React.useState(false);
+  const [otpError, setOtpError] = React.useState<string | null>(null);
+  const idempotencyKeyRef = React.useRef<string | null>(null);
 
   const nextStep = () => setStep((s) => Math.min(s + 1, 5));
-  const prevStep = () => setStep((s) => Math.max(s - 1, 1));
+  const prevStep = () => {
+    setStep((s) => {
+      if (s === 4) idempotencyKeyRef.current = null;
+      return Math.max(s - 1, 1);
+    });
+  };
+
+  const remittanceBlockers = (userDetail?.eligibility?.blockers ?? []).filter(
+    (b) =>
+      b.code !== "ONBOARDING_INCOMPLETE" &&
+      b.code !== "CYBRID_NOT_LINKED" &&
+      b.code !== "CYBRID_NOT_VERIFIED",
+  );
 
   const canProceed1 =
     Boolean(adminToken) &&
-    Boolean(selectedUser) &&
-    userDetail?.eligibility.can_transfer === true;
+    Boolean(selectedUser?.is_active) &&
+    !userDetailLoading &&
+    remittanceBlockers.length === 0;
 
   const minReceive =
     transferType === "bank"
@@ -406,29 +443,84 @@ export function SendMoneyFlow() {
       base.bankSortCode = bankSortCode.trim();
     }
 
+    if (idempotencyKeyRef.current) {
+      base.idempotencyKey = idempotencyKeyRef.current;
+    }
+
     return base;
   };
 
-  const onSubmit = async () => {
+  const onRequestSendMoneyOtp = async () => {
+    if (!adminToken) return;
+    setOtpSending(true);
+    setOtpError(null);
+    try {
+      const data = await adminSendMoneyOtpChallenge(adminToken);
+      setOtpChallengeId(data.challenge_id);
+      setOtpDestination(data.destination_email || "info@borabond.com");
+      setOtpCode("");
+    } catch (e) {
+      setOtpError(
+        e instanceof AdminApiError ? e.message : "Could not send the authorization code.",
+      );
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const openSendPaymentDialog = () => {
+    if (!adminToken || !selectedUser) return;
+    setOtpError(null);
+    setSubmitError(null);
+    setOtpDialogOpen(true);
+    if (!otpChallengeId) {
+      void onRequestSendMoneyOtp();
+    }
+  };
+
+  const closeSendPaymentDialog = () => {
+    if (submitting) return;
+    setOtpDialogOpen(false);
+  };
+
+  const onConfirmSendFromDialog = async () => {
     if (!adminToken || !selectedUser) return;
     if (submitInFlightRef.current) return;
+    if (!otpChallengeId) {
+      setOtpError("The authorization code has not been sent yet. Use Resend code.");
+      return;
+    }
+    const code = otpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setOtpError("Enter the 6-digit code emailed to the ops inbox.");
+      return;
+    }
     submitInFlightRef.current = true;
     setSubmitting(true);
-    setSubmitError(null);
+    setOtpError(null);
     setPaymentResult(null);
     try {
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current = newSendMoneyIdempotencyKey();
+      }
+      const verified = await adminSendMoneyOtpVerify(adminToken, otpChallengeId, code);
       const body = buildDirectPaymentBody();
       const queued = await postRemittancePaymentsViaDashboardProxy(
         adminToken,
         selectedUser.user_id,
         body,
+        verified.confirmation_token,
       );
       setPaymentResult(queued);
+      setOtpCode("");
+      setOtpChallengeId(null);
+      idempotencyKeyRef.current = null;
+      setOtpDialogOpen(false);
       setStep(5);
     } catch (e) {
       const msg =
         e instanceof AdminApiError ? e.message : e instanceof Error ? e.message : "Submit failed.";
-      setSubmitError(msg);
+      setOtpError(msg);
     } finally {
       submitInFlightRef.current = false;
       setSubmitting(false);
@@ -441,28 +533,29 @@ export function SendMoneyFlow() {
     setSubmitError(null);
     setMmValidation(null);
     setBankValidation(null);
+    setOtpChallengeId(null);
+    setOtpCode("");
+    setOtpError(null);
+    setOtpDialogOpen(false);
+    idempotencyKeyRef.current = null;
   };
 
-  const blockers = userDetail?.eligibility?.blockers ?? [];
-
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <div className="w-full space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
             Send money
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
-            Queues provider payout (Pegasus, ChapChap, etc.) via{" "}
-            <code className="rounded bg-surface-muted px-1 text-xs">POST /api/v1/remittance/payments</code>
-            , same as the mobile app.             Submit calls the dashboard API, which asks the remittance backend for a short-lived app-user JWT
-            (same roles as send-money: Super / Operations / Finance) and then posts to{" "}
-            <code className="rounded bg-surface-muted px-1 text-xs">/remittance/payments</code>. No manual
-            token config.
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-[15px]">
+            Creates a transfer on behalf of the selected customer via the API gateway{" "}
+            <code className="rounded bg-surface-muted px-1 text-xs">POST /api/v1/admin/transfers</code>
+            {" "}(staff session only — Super / Operations / Finance). Pays out on Pegasus
+            directly — no Cybrid or RytePay funding.
           </p>
         </div>
         {step > 1 && step < 5 ? (
-          <Button type="button" variant="secondary" className="gap-2" onClick={prevStep}>
+          <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={prevStep}>
             <ChevronLeft className="size-4" />
             Back
           </Button>
@@ -506,8 +599,13 @@ export function SendMoneyFlow() {
         ))}
       </div>
 
-      <Card>
-        <CardContent className="flex min-h-[480px] flex-col p-6 md:p-8">
+      <Card className="w-full">
+        <CardContent
+          className={cn(
+            "flex flex-col",
+            step === 1 ? "min-h-[min(70vh,720px)] p-4 md:p-5" : "min-h-[480px] p-6 md:p-8",
+          )}
+        >
           <AnimatePresence mode="wait">
             {step === 1 ? (
               <motion.div
@@ -515,14 +613,14 @@ export function SendMoneyFlow() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -12 }}
-                className="flex flex-1 flex-col gap-6"
+                className="flex min-h-0 flex-1 flex-col gap-4"
               >
                 <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3 text-sm text-muted-foreground">
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 size-4 shrink-0 text-primary" />
                     <p>
-                      Choose the customer from the directory. On submit, the server mints that user&apos;s
-                      access token for the payment call (ops session required).
+                      Choose the customer who owns this payout. Send-money-only customers can be
+                      selected without investment onboarding.
                     </p>
                   </div>
                 </div>
@@ -530,9 +628,16 @@ export function SendMoneyFlow() {
                 <UserSelector
                   accessToken={adminToken}
                   selected={selectedUser}
+                  purpose="send-money"
                   onSelect={(u) => {
                     setSelectedUser(u);
                     setListError(null);
+                    if (
+                      u?.product_intent === "send_only" ||
+                      u?.account_purpose === "SEND_MONEY_ONLY"
+                    ) {
+                      setBondPercent("0");
+                    }
                   }}
                   onError={(msg) => setListError(msg)}
                 />
@@ -552,25 +657,34 @@ export function SendMoneyFlow() {
                         {customerGuid ?? "— not linked —"}
                       </span>
                     </p>
-                    {!userDetail.eligibility.can_transfer && blockers.length > 0 ? (
+                    {remittanceBlockers.length > 0 ? (
                       <ul className="list-inside list-disc text-danger">
-                        {blockers.map((b) => (
+                        {remittanceBlockers.map((b) => (
                           <li key={b.code}>
                             {b.message}{" "}
                             <span className="text-xs opacity-80">({b.code})</span>
                           </li>
                         ))}
                       </ul>
+                    ) : sendOnlyCustomer ? (
+                      <p className="text-muted-foreground">
+                        Send money only — investment onboarding is not required to send.
+                      </p>
                     ) : null}
                   </div>
                 ) : selectedUser ? (
                   <p className="text-sm text-danger">Could not load user detail.</p>
                 ) : null}
 
-                <div className="mt-auto pt-4">
+                <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedUser
+                      ? `Continue as ${selectedUser.full_name || selectedUser.email || selectedUser.user_id}`
+                      : "Select a sender to continue"}
+                  </p>
                   <Button
                     type="button"
-                    className="h-12 w-full gap-2"
+                    className="h-11 gap-2 sm:min-w-[200px]"
                     disabled={!canProceed1}
                     onClick={nextStep}
                   >
@@ -587,7 +701,7 @@ export function SendMoneyFlow() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -12 }}
-                className="flex flex-1 flex-col gap-6"
+                className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6"
               >
                 <div className="flex gap-2">
                   <button
@@ -632,10 +746,16 @@ export function SendMoneyFlow() {
                     <label className="text-xs font-medium text-foreground">Bond % (0–100)</label>
                     <Input
                       inputMode="numeric"
-                      value={bondPercent}
+                      value={sendOnlyCustomer ? "0" : bondPercent}
                       onChange={(e) => setBondPercent(e.target.value)}
                       placeholder="0"
+                      disabled={sendOnlyCustomer}
                     />
+                    {sendOnlyCustomer ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Bond allocation is unavailable for send-money-only customers.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -731,7 +851,7 @@ export function SendMoneyFlow() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -12 }}
-                className="flex flex-1 flex-col gap-5"
+                className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5"
               >
                 {transferType === "mobile_money" ? (
                   <>
@@ -884,7 +1004,7 @@ export function SendMoneyFlow() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -12 }}
-                className="flex flex-1 flex-col gap-6"
+                className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6"
               >
                 <div className="space-y-3 rounded-xl border border-border bg-surface-muted/50 p-5 text-sm">
                   <Row k="Sender user" v={selectedUser?.user_id ?? "—"} />
@@ -926,23 +1046,20 @@ export function SendMoneyFlow() {
                   </div>
                 ) : null}
 
+                <p className="text-sm text-muted-foreground">
+                  Sending payment emails a 6-digit code to{" "}
+                  <span className="font-medium text-foreground">{otpDestination}</span>. The payout
+                  only goes through after that code is confirmed.
+                </p>
+
                 <Button
                   type="button"
                   className="h-12 w-full gap-2"
                   disabled={submitting || !adminToken || !selectedUser}
-                  onClick={() => void onSubmit()}
+                  onClick={openSendPaymentDialog}
                 >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="size-5 animate-spin" />
-                      Submitting payment…
-                    </>
-                  ) : (
-                    <>
-                      Send payment
-                      <ArrowRight className="size-5" />
-                    </>
-                  )}
+                  Send payment
+                  <ArrowRight className="size-5" />
                 </Button>
               </motion.div>
             ) : null}
@@ -952,7 +1069,7 @@ export function SendMoneyFlow() {
                 key="s5"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-1 flex-col items-center justify-center gap-5 text-center"
+                className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-5 text-center"
               >
                 <div className="flex size-20 items-center justify-center rounded-full bg-success-muted text-success">
                   <CheckCircle2 className="size-10" />
@@ -998,6 +1115,22 @@ export function SendMoneyFlow() {
           </AnimatePresence>
         </CardContent>
       </Card>
+
+      <SendMoneyOtpDialog
+        open={otpDialogOpen}
+        destinationEmail={otpDestination}
+        code={otpCode}
+        sendingCode={otpSending}
+        submitting={submitting}
+        error={otpError}
+        onCodeChange={(value) => {
+          setOtpCode(value);
+          if (otpError) setOtpError(null);
+        }}
+        onResend={() => void onRequestSendMoneyOtp()}
+        onCancel={closeSendPaymentDialog}
+        onConfirm={() => void onConfirmSendFromDialog()}
+      />
     </div>
   );
 }

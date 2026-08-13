@@ -325,7 +325,7 @@ export function SettingsPage() {
               id="workspace-panel-inner"
               icon={Sparkles}
               title="Workspace"
-              description="Send money on Execute uses admin routes on the remittance API; no separate app-user token is required."
+              description="Send money uses API gateway admin routes (staff JWT). No customer impersonation token."
             >
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface-muted/30 px-6 py-14 text-center dark:bg-surface-muted/15">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-primary-muted text-primary">

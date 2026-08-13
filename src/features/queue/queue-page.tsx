@@ -90,8 +90,8 @@ export function QueuePage() {
             ) : null}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground md:text-[15px]">
-            Live BullMQ depths (Redis) and recent <span className="font-mono">send_money_jobs</span>{" "}
-            rows (Postgres) from the remittance API — same data the workers use.
+            Transfer status snapshot from <span className="font-mono">transfer.transfers</span>{" "}
+            via the API gateway.
           </p>
         </div>
         <Button

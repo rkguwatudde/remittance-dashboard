@@ -138,7 +138,7 @@ export function TradeAndTransferPage() {
       preview.destination_external_wallet_guid?.trim() || fallbackExternalWallet.trim() || undefined;
     if (!ext) {
       setExecuteError(
-        "No destination wallet: set CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID on the remittance API, or enter the external wallet GUID below.",
+        "No destination wallet: set CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID on payment-service, or enter the external wallet GUID below.",
       );
       return;
     }
@@ -192,7 +192,7 @@ export function TradeAndTransferPage() {
         <p className="text-xs font-semibold uppercase tracking-wider text-primary">Cybrid</p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Trade &amp; transfer</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Convert platform FIAT to USDC on Solana, then send to the external wallet configured on the remittance API
+          Convert platform FIAT to USDC on Solana, then send to the external wallet configured on payment-service
           (<code className="text-xs">CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID</code>), or pass a wallet in the
           API request when that env is unset.
         </p>

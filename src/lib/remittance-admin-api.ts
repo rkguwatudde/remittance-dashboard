@@ -1,14 +1,13 @@
 /**
- * Remittance API — dashboard admin auth (/api/v1/admins/*).
+ * Platform admin API via the API gateway (`/api/v1/admin/{domain}/*`).
  *
  * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL
- * - Local: http://localhost:9002 (direct to Nest; CORS allowlist includes localhost).
- * - Production (duplicate CORS at Cloudflare/nginx): /api/remittance-backend and set
- *   REMITTANCE_API_UPSTREAM=https://remittance.api.borabond.com in next.config (rewrites).
+ * - Local: `/api/remittance-backend` (same-origin proxy → gateway :9000)
+ * - Direct gateway: http://localhost:9000
  */
 
 const baseUrl = () =>
-  (process.env.NEXT_PUBLIC_REMITTANCE_API_URL || "http://localhost:9002").replace(
+  (process.env.NEXT_PUBLIC_REMITTANCE_API_URL || "/api/remittance-backend").replace(
     /\/$/,
     "",
   );
@@ -103,43 +102,86 @@ export type AdminRefreshResponse = {
 };
 
 export async function adminLogin(email: string, password: string) {
-  return request<AdminLoginStep1Response>("/api/v1/admins/auth/login", {
+  return request<AdminLoginStep1Response>("/api/v1/admin/auth/login", {
     method: "POST",
     json: { email, password },
   });
 }
 
 export async function adminVerifyOtp(session_id: string, otp: string) {
-  return request<AdminVerifyOtpResponse>("/api/v1/admins/auth/verify-otp", {
+  const raw = await request<AdminVerifyOtpResponse & { staff?: AdminVerifyOtpResponse["admin"] }>(
+    "/api/v1/admin/auth/verify-otp",
+    {
+      method: "POST",
+      json: { session_id, otp },
+    },
+  );
+  const admin = raw.admin ?? raw.staff;
+  if (!admin) {
+    throw new AdminApiError("Login succeeded but no staff profile was returned", "BAD_RESPONSE", 502);
+  }
+  return { ...raw, admin };
+}
+
+export async function adminSendMoneyOtpChallenge(accessToken: string) {
+  const raw = await request<{
+    success: boolean;
+    data: { challenge_id: string; expires_in_sec: number; destination_email: string };
+  }>("/api/v1/admin/auth/send-money-otp/challenge", {
     method: "POST",
-    json: { session_id, otp },
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
+  return raw.data;
+}
+
+export async function adminSendMoneyOtpVerify(
+  accessToken: string,
+  challengeId: string,
+  otp: string,
+) {
+  const raw = await request<{
+    success: boolean;
+    data: { confirmation_token: string; expires_in_sec: number };
+  }>("/api/v1/admin/auth/send-money-otp/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: { challenge_id: challengeId, otp },
+  });
+  return raw.data;
 }
 
 export async function adminForgotPassword(email: string) {
   return request<{ success: boolean; message: string }>(
-    "/api/v1/admins/auth/forgot-password",
+    "/api/v1/admin/auth/forgot-password",
     { method: "POST", json: { email } },
   );
 }
 
 export async function adminResetPassword(token: string, new_password: string) {
   return request<{ success: boolean; message: string }>(
-    "/api/v1/admins/auth/reset-password",
+    "/api/v1/admin/auth/reset-password",
     { method: "POST", json: { token, new_password } },
   );
 }
 
 export async function adminRefresh(refresh_token: string) {
-  return request<AdminRefreshResponse>("/api/v1/admins/auth/refresh", {
-    method: "POST",
-    json: { refresh_token },
-  });
+  const raw = await request<AdminRefreshResponse & { staff?: AdminRefreshResponse["admin"] }>(
+    "/api/v1/admin/auth/refresh",
+    {
+      method: "POST",
+      json: { refresh_token },
+    },
+  );
+  const admin = raw.admin ?? raw.staff;
+  if (!admin) {
+    throw new AdminApiError("Refresh succeeded but no staff profile was returned", "BAD_RESPONSE", 502);
+  }
+  return { ...raw, admin };
 }
 
 export async function adminLogout(accessToken: string, refresh_token?: string) {
   return request<{ success: boolean; message: string }>(
-    "/api/v1/admins/auth/logout",
+    "/api/v1/admin/auth/logout",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -154,7 +196,7 @@ export async function adminChangePassword(
   new_password: string,
 ) {
   return request<{ success: boolean; message: string }>(
-    "/api/v1/admins/auth/change-password",
+    "/api/v1/admin/auth/change-password",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -171,7 +213,7 @@ export async function adminUpdateSignIn(
   return adminChangePassword(accessToken, existing, next);
 }
 
-/** Super-admin team management: GET/POST /api/v1/admins */
+/** Super-admin team management: GET/POST /api/v1/admin/staff */
 export type AdminTeamMember = {
   id: string;
   email: string;
@@ -197,7 +239,7 @@ export const ADMIN_CREATE_ROLES = [
 
 export async function adminListTeam(accessToken: string) {
   const raw = await request<{ success: boolean; data: { admins: AdminTeamMember[] } }>(
-    "/api/v1/admins",
+    "/api/v1/admin/staff",
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.admins;
@@ -216,7 +258,7 @@ export async function adminCreateTeamMember(
       role: string;
       onboarding_email_sent: boolean;
     };
-  }>("/api/v1/admins", {
+  }>("/api/v1/admin/staff", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: { email: body.email.trim().toLowerCase(), role: body.role },
@@ -233,7 +275,7 @@ export async function adminUpdateTeamMember(
     success: boolean;
     message: string;
     data: { admin: { id: string; email: string; role: string; is_active: boolean } };
-  }>(`/api/v1/admins/${encodeURIComponent(id)}`, {
+  }>(`/api/v1/admin/staff/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: body,
@@ -273,7 +315,7 @@ export async function adminBroadcast(
     success: boolean;
     message: string;
     data: AdminBroadcastResult;
-  }>("/api/v1/admins/notifications/broadcast", {
+  }>("/api/v1/admin/notifications/broadcast", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: payload,
@@ -286,7 +328,7 @@ export async function adminBroadcastRecipients(
   params?: { q?: string; limit?: number },
 ) {
   const raw = await request<{ success: boolean; data: { users: AdminBroadcastRecipient[] } }>(
-    `/api/v1/admins/notifications/recipients${buildQuery({
+    `/api/v1/admin/customers/notification-recipients${buildQuery({
       q: params?.q,
       limit: params?.limit,
     })}`,
@@ -305,8 +347,8 @@ export type AdminDashboardRailHealth = {
 
 export type AdminDashboardOverview = {
   kpis: {
-    totalVolumeSent: number;
-    volumeCurrency: string;
+    totalVolumeSent: number | null;
+    volumeCurrency: string | null;
     totalTransactions: number;
     successRatePercent: number | null;
     pendingTransactions: number;
@@ -326,6 +368,7 @@ export type AdminDashboardOverview = {
   };
   wallet: {
     balance: number | null;
+    currency?: string | null;
     provider: string | null;
     error: string | null;
   };
@@ -340,7 +383,7 @@ type WrappedOverview = {
 };
 
 export async function adminDashboardOverview(accessToken: string) {
-  const raw = await request<WrappedOverview>("/api/v1/admins/dashboard/overview", {
+  const raw = await request<WrappedOverview>("/api/v1/admin/transfers/overview", {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -381,7 +424,7 @@ export async function adminCybridBookTransferCustomerAccounts(
   userId: string,
 ) {
   const raw = await request<{ success: boolean; data: AdminCybridBookTransferAccountsData }>(
-    `/api/v1/admins/cybrid/book-transfer/users/${encodeURIComponent(userId)}/accounts`,
+    `/api/v1/admin/payments/book-transfer/users/${encodeURIComponent(userId)}/accounts`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -392,7 +435,7 @@ export async function adminCybridBookTransferCustomerAccounts(
 
 export async function adminCybridBookTransferQuote(accessToken: string, amountCents: number) {
   const raw = await request<{ success: boolean; data: AdminCybridBookTransferQuoteData }>(
-    "/api/v1/admins/cybrid/book-transfer/quote",
+    "/api/v1/admin/payments/book-transfer/quote",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -413,7 +456,7 @@ export async function adminCybridBookTransferExecute(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminCybridBookTransferExecuteData }>(
-    "/api/v1/admins/cybrid/book-transfer/execute",
+    "/api/v1/admin/payments/book-transfer/execute",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -460,7 +503,7 @@ export type AdminTradeAndTransferExecuteData = {
 
 export async function adminTradeAndTransferExternalWallets(accessToken: string) {
   const raw = await request<{ success: boolean; data: { wallets: AdminTradeAndTransferWallet[] } }>(
-    "/api/v1/admins/trade-and-transfer/external-wallets",
+    "/api/v1/admin/payments/trade-and-transfer/external-wallets",
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -474,7 +517,7 @@ export async function adminTradeAndTransferPreview(
   body: { use_full_fiat_balance: boolean; deliver_amount_usd_cents?: number },
 ) {
   const raw = await request<{ success: boolean; data: AdminTradeAndTransferPreviewData }>(
-    "/api/v1/admins/trade-and-transfer/preview",
+    "/api/v1/admin/payments/trade-and-transfer/preview",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -489,13 +532,13 @@ export async function adminTradeAndTransferExecute(
   body: {
     trade_quote_guid: string;
     deliver_amount_usd_cents: number;
-    /** Omit when remittance API sets `CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID`. */
+    /** Omit when payment-service sets `CYBRID_ADMIN_TRADE_TRANSFER_EXTERNAL_WALLET_GUID`. */
     external_wallet_guid?: string;
     idempotency_key: string;
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminTradeAndTransferExecuteData }>(
-    "/api/v1/admins/trade-and-transfer/execute",
+    "/api/v1/admin/payments/trade-and-transfer/execute",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -529,7 +572,7 @@ export type AdminQueueOverview = {
 
 export async function adminQueueOverview(accessToken: string) {
   const raw = await request<{ success: boolean; data: AdminQueueOverview }>(
-    "/api/v1/admins/queue/overview",
+    "/api/v1/admin/transfers/queue",
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -573,6 +616,18 @@ export type AdminRemittanceTransactionRow = {
   fee_basis_points: number | null;
   cybrid_transaction_status: string | null;
   payout_provider_status: string | null;
+  funding_method?: string | null;
+  funding_kind?: "card" | "cybrid_bank" | "wallet" | "ops" | "unknown" | null;
+  funding_label?: string | null;
+  funding_rail?: string | null;
+  funding_rail_label?: string | null;
+  funding_decision_source?: string | null;
+  funding_decision_label?: string | null;
+  funding_instrument?: string | null;
+  funding_bank_name?: string | null;
+  funding_account_mask?: string | null;
+  linked_bank_account_id?: string | null;
+  linked_debit_card_id?: string | null;
 };
 
 export type AdminRemittanceTransactionsResult = {
@@ -609,7 +664,7 @@ export async function adminRemittanceTransactions(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminRemittanceTransactionsResult }>(
-    `/api/v1/admins/remittance-transactions${buildQuery(params)}`,
+    `/api/v1/admin/transfers${buildQuery(params)}`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -620,7 +675,7 @@ export async function adminRemittanceTransactions(
 
 export async function adminRemittanceTransactionById(accessToken: string, id: string) {
   const raw = await request<{ success: boolean; data: { transaction: AdminRemittanceTransactionRow } }>(
-    `/api/v1/admins/remittance-transactions/${encodeURIComponent(id)}`,
+    `/api/v1/admin/transfers/${encodeURIComponent(id)}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.transaction;
@@ -634,7 +689,7 @@ export type AdminBankListItem = {
 
 export async function adminBanksList(accessToken: string) {
   const raw = await request<{ success: boolean; data: { banks: AdminBankListItem[] } }>(
-    "/api/v1/admins/banks",
+    "/api/v1/admin/transfers/banks",
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.banks;
@@ -679,7 +734,7 @@ export async function adminSavedRecipientsList(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminSavedRecipientsResult }>(
-    `/api/v1/admins/saved-recipients${buildQuery({
+    `/api/v1/admin/customers/recipients${buildQuery({
       limit: params.limit,
       offset: params.offset,
       q: params.q,
@@ -711,7 +766,7 @@ export async function adminCreateSavedRecipient(
   },
 ) {
   const raw = await request<{ success: boolean; data: { recipient: AdminSavedRecipientRow } }>(
-    "/api/v1/admins/saved-recipients",
+    "/api/v1/admin/customers/recipients",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -735,7 +790,7 @@ export async function adminUpdateSavedRecipient(
   },
 ) {
   const raw = await request<{ success: boolean; data: { recipient: AdminSavedRecipientRow } }>(
-    `/api/v1/admins/saved-recipients/${encodeURIComponent(id)}`,
+    `/api/v1/admin/customers/recipients/${encodeURIComponent(id)}`,
     {
       method: "PATCH",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -747,7 +802,7 @@ export async function adminUpdateSavedRecipient(
 
 export async function adminSetRecipientActive(accessToken: string, id: string, is_active: boolean) {
   const raw = await request<{ success: boolean; data: { recipient: AdminSavedRecipientRow } }>(
-    `/api/v1/admins/saved-recipients/${encodeURIComponent(id)}/active`,
+    `/api/v1/admin/customers/recipients/${encodeURIComponent(id)}/active`,
     {
       method: "PATCH",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -759,7 +814,7 @@ export async function adminSetRecipientActive(accessToken: string, id: string, i
 
 export async function adminDeleteSavedRecipient(accessToken: string, id: string) {
   await request<{ success: boolean; data: unknown }>(
-    `/api/v1/admins/saved-recipients/${encodeURIComponent(id)}`,
+    `/api/v1/admin/customers/recipients/${encodeURIComponent(id)}`,
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
 }
@@ -799,7 +854,7 @@ export async function adminSmsNotificationLogs(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminSmsNotificationLogsResult }>(
-    `/api/v1/admins/sms-notification-logs${buildQuery(params)}`,
+    `/api/v1/admin/notifications/sms-logs${buildQuery(params)}`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -810,7 +865,7 @@ export async function adminSmsNotificationLogs(
 
 export async function adminSmsNotificationLogById(accessToken: string, id: string) {
   const raw = await request<{ success: boolean; data: { log: AdminSmsNotificationLogRow } }>(
-    `/api/v1/admins/sms-notification-logs/${encodeURIComponent(id)}`,
+    `/api/v1/admin/notifications/sms-logs/${encodeURIComponent(id)}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.log;
@@ -820,7 +875,7 @@ export async function adminSmsNotificationRetry(accessToken: string, id: string)
   const raw = await request<{
     success: boolean;
     data: { queued: boolean; log: AdminSmsNotificationLogRow };
-  }>(`/api/v1/admins/sms-notification-logs/${encodeURIComponent(id)}/retry`, {
+  }>(`/api/v1/admin/notifications/sms-logs/${encodeURIComponent(id)}/retry`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -893,11 +948,44 @@ export type SystemControlCenterOverview = {
 };
 
 export async function adminSystemOverview(accessToken: string) {
-  const raw = await request<{ success: boolean; data: SystemControlCenterOverview }>(
-    "/api/v1/admins/system/overview",
-    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  return raw.data;
+  const overview = await adminDashboardOverview(accessToken);
+  const unknownRail = (
+    label: string,
+    provider?: string,
+  ): SystemRailCard => ({
+    label,
+    status: overview.systemHealth.cybrid.status,
+    detail: overview.systemHealth.cybrid.detail,
+    provider,
+    responseTimeMs: null,
+    errorRate: null,
+    lastCheckedAt: null,
+  });
+  const data: SystemControlCenterOverview = {
+    generatedAt: overview.generatedAt,
+    banner: {
+      overallStatus: "partial",
+      message: "Rail health is sourced from transfer KPIs on the microservices platform.",
+    },
+    rails: {
+      cybrid: unknownRail("Cybrid", "cybrid"),
+      mobileMoney: unknownRail("Mobile money", overview.systemHealth.mobileMoney.provider),
+      bank: unknownRail("Bank", overview.systemHealth.bankTransfer.provider),
+    },
+    providerHealth: [],
+    serviceProviders: [],
+    apiMetrics: {
+      last1h: { totalRequests: 0, successRate: 0, errorRatePercent: 0, avgLatencyMs: 0 },
+      last24h: {
+        totalRequests: overview.kpis.totalTransactions,
+        successRate: overview.kpis.successRatePercent ?? 0,
+        errorRatePercent: overview.kpis.successRatePercent == null ? 0 : 100 - overview.kpis.successRatePercent,
+        avgLatencyMs: 0,
+      },
+      hourly: [],
+    },
+  };
+  return data;
 }
 
 export type ProviderMetricLogRow = {
@@ -912,7 +1000,7 @@ export type ProviderMetricLogRow = {
 
 export async function adminProviderLogs(accessToken: string, providerName: string, limit?: number) {
   const raw = await request<{ success: boolean; data: { logs: ProviderMetricLogRow[] } }>(
-    `/api/v1/admins/system/provider-logs/${encodeURIComponent(providerName)}${buildQuery({ limit })}`,
+    `/api/v1/admin/payments/system/provider-logs/${encodeURIComponent(providerName)}${buildQuery({ limit })}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.logs;
@@ -930,7 +1018,7 @@ export async function adminCreateServiceProvider(
   const raw = await request<{
     success: boolean;
     data: { provider: Record<string, unknown> };
-  }>("/api/v1/admins/system/service-providers", {
+  }>("/api/v1/admin/payments/system/service-providers", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: body,
@@ -958,7 +1046,7 @@ export async function adminPatchServiceProvider(
   const raw = await request<{
     success: boolean;
     data: { provider: Record<string, unknown> };
-  }>(`/api/v1/admins/system/service-providers/${encodeURIComponent(id)}`, {
+  }>(`/api/v1/admin/payments/system/service-providers/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: body,
@@ -975,7 +1063,7 @@ export async function adminPatchServiceProvider(
 
 export async function adminDeleteServiceProvider(accessToken: string, id: string) {
   await request<{ success: boolean; data: { id: string } }>(
-    `/api/v1/admins/system/service-providers/${encodeURIComponent(id)}`,
+    `/api/v1/admin/payments/system/service-providers/${encodeURIComponent(id)}`,
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
 }
@@ -1021,19 +1109,11 @@ export async function adminPlatformAuditLogs(
       logs: AdminPlatformAuditLogRow[];
       pagination: { limit: number; offset: number; total: number };
     };
-  }>(`/api/v1/admins/audit-logs${buildQuery(params)}`, {
+  }>(`/api/v1/admin/payments/audit-logs${buildQuery(params)}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   return raw.data;
-}
-
-export async function adminPlatformAuditLogById(accessToken: string, id: string) {
-  const raw = await request<{ success: boolean; data: { log: AdminPlatformAuditLogRow } }>(
-    `/api/v1/admins/audit-logs/${encodeURIComponent(id)}`,
-    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  return raw.data.log;
 }
 
 export async function adminPlatformAuditAnomalies(accessToken: string) {
@@ -1043,7 +1123,7 @@ export async function adminPlatformAuditAnomalies(accessToken: string) {
       highTrafficIps: { ip_address: string; count: number }[];
       repeatedFailures: { action: string; count: number }[];
     };
-  }>("/api/v1/admins/audit-logs/anomalies", {
+  }>("/api/v1/admin/payments/audit-logs/anomalies", {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -1082,19 +1162,11 @@ export async function adminRemittanceAuditLogs(
       logs: AdminRemittanceAuditLogRow[];
       pagination: { limit: number; offset: number; total: number };
     };
-  }>(`/api/v1/admins/remittance-admin-audit${buildQuery(params)}`, {
+  }>(`/api/v1/admin/payments/remittance-admin-audit${buildQuery(params)}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   return raw.data;
-}
-
-export async function adminRemittanceAuditLogById(accessToken: string, id: string) {
-  const raw = await request<{ success: boolean; data: { log: AdminRemittanceAuditLogRow } }>(
-    `/api/v1/admins/remittance-admin-audit/${encodeURIComponent(id)}`,
-    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  return raw.data.log;
 }
 
 /** user_profiles + LEFT JOIN cybrid_customers (admin directory) */
@@ -1107,6 +1179,9 @@ export type AdminUserDirectoryRow = {
   is_verified: boolean;
   is_active: boolean;
   onboarding_completed: boolean | null;
+  onboarding_required?: boolean | null;
+  product_intent?: "send_only" | "send_and_invest" | null;
+  account_purpose?: string | null;
   last_login_at: string | null;
   cybrid_customer_id: string | null;
   cybrid_verification_status: string | null;
@@ -1133,7 +1208,7 @@ export async function adminUsersList(
       users: AdminUserDirectoryRow[];
       pagination: { limit: number; offset: number; total: number };
     };
-  }>(`/api/v1/admins/users${buildQuery(params)}`, {
+  }>(`/api/v1/admin/users${buildQuery(params)}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -1150,7 +1225,10 @@ export type AdminUserDetailResponse = {
     is_verified: boolean;
     is_active: boolean;
     onboarding_completed: boolean | null;
+    onboarding_required?: boolean | null;
     onboarding_step: number | null;
+    product_intent?: "send_only" | "send_and_invest" | null;
+    account_purpose?: string | null;
     last_login: string | null;
     last_login_at: string | null;
     created_at: string | null;
@@ -1171,7 +1249,7 @@ export type AdminUserDetailResponse = {
 
 export async function adminUserDetail(accessToken: string, userId: string) {
   const raw = await request<{ success: boolean; data: AdminUserDetailResponse }>(
-    `/api/v1/admins/users/${encodeURIComponent(userId)}`,
+    `/api/v1/admin/users/${encodeURIComponent(userId)}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data;
@@ -1212,7 +1290,7 @@ export async function adminPullFundsBankAccounts(
   userId: string,
 ) {
   const raw = await request<{ success: boolean; data: AdminPullFundsBankAccountsResponse }>(
-    `/api/v1/admins/pull-funds/users/${encodeURIComponent(userId)}/bank-accounts`,
+    `/api/v1/admin/payments/pull-funds/users/${encodeURIComponent(userId)}/bank-accounts`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data;
@@ -1230,7 +1308,7 @@ export async function adminPullFundsExecute(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminPullFundsExecuteResponse }>(
-    "/api/v1/admins/pull-funds",
+    "/api/v1/admin/payments/pull-funds",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1275,7 +1353,7 @@ export type AdminTradingSnapshot = {
 /** Cybrid trading snapshot for a user (GET /admins/users/:id/trading-snapshot). */
 export async function adminUserTradingSnapshot(accessToken: string, userId: string) {
   const raw = await request<{ success: boolean; data: AdminTradingSnapshot }>(
-    `/api/v1/admins/users/${encodeURIComponent(userId)}/trading-snapshot`,
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/trading-snapshot`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1297,7 +1375,7 @@ export type AdminBorapayBookBalance = {
 /** BoraPay USD amount for book-transfer field (GET /admins/users/:id/borapay-book-balance). */
 export async function adminUserBorapayBookBalance(accessToken: string, userId: string) {
   const raw = await request<{ success: boolean; data: AdminBorapayBookBalance }>(
-    `/api/v1/admins/users/${encodeURIComponent(userId)}/borapay-book-balance`,
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/borapay-book-balance`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1316,7 +1394,7 @@ export async function adminTransferBook(
   body: { user_ids: string[]; amount_cents?: number; idempotency_key?: string },
 ) {
   const raw = await request<{ success: boolean; data: AdminBatchOpResult }>(
-    "/api/v1/admins/transfers/book",
+    "/api/v1/admin/payments/book-transfer/execute",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1336,7 +1414,7 @@ export async function adminTradeBatch(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminBatchOpResult }>(
-    "/api/v1/admins/trades",
+    "/api/v1/admin/payments/trades",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1357,7 +1435,7 @@ export type AdminWithdrawPlatformWallet = {
 /** Resolve Cybrid "Platform Wallet" (USDC_SOL, completed) for admin withdraw. */
 export async function adminWithdrawPlatformWallet(accessToken: string) {
   const raw = await request<{ success: boolean; data: AdminWithdrawPlatformWallet }>(
-    "/api/v1/admins/withdrawals/platform-wallet",
+    "/api/v1/admin/payments/withdrawals/platform-wallet",
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1375,7 +1453,7 @@ export type AdminWithdrawPlatformTradingBalance = {
 /** Bank-owned USDC_SOL trading account `platform_balance` (GET /accounts?owner=bank&bank_guid=…). */
 export async function adminWithdrawPlatformTradingBalance(accessToken: string) {
   const raw = await request<{ success: boolean; data: AdminWithdrawPlatformTradingBalance }>(
-    "/api/v1/admins/withdrawals/platform-trading-balance",
+    "/api/v1/admin/payments/withdrawals/platform-trading-balance",
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1395,7 +1473,7 @@ export async function adminWithdrawBatch(
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminBatchOpResult }>(
-    "/api/v1/admins/withdrawals",
+    "/api/v1/admin/payments/withdrawals",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1427,7 +1505,7 @@ export async function adminOperationsList(
       operations: AdminOperationLogRow[];
       pagination: { limit: number; offset: number; total: number };
     };
-  }>(`/api/v1/admins/operations${buildQuery(params ?? {})}`, {
+  }>(`/api/v1/admin/payments/operations${buildQuery(params ?? {})}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -1449,7 +1527,7 @@ export async function adminSendMoneyCustomerRate(
   params: { user_id: string; useBondRate?: boolean },
 ) {
   const raw = await request<{ success: boolean; data: AdminSendMoneyCustomerRate }>(
-    `/api/v1/admins/send-money/customer-rate${buildQuery({
+    `/api/v1/admin/transfers/send-money/customer-rate${buildQuery({
       user_id: params.user_id,
       useBondRate: params.useBondRate,
     })}`,
@@ -1458,22 +1536,6 @@ export async function adminSendMoneyCustomerRate(
       headers: { Authorization: `Bearer ${accessToken}` },
     },
   );
-  return raw.data;
-}
-
-/** POST /admins/send-money/app-user-access-token — short-lived JWT for payout proxy (ops only). */
-export async function adminSendMoneyIssueAppUserAccessToken(
-  accessToken: string,
-  body: { user_id: string },
-): Promise<{ access_token: string; expires_in: number }> {
-  const raw = await request<{
-    success: boolean;
-    data: { access_token: string; expires_in: number };
-  }>("/api/v1/admins/send-money/app-user-access-token", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-    json: body,
-  });
   return raw.data;
 }
 
@@ -1503,7 +1565,7 @@ export async function adminSendMoneyValidateAccount(
     code?: string;
     message?: string;
     data?: AdminSendMoneyValidateResult | null;
-  }>("/api/v1/admins/send-money/validate-account", {
+  }>("/api/v1/admin/payments/validate-account", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     json: body,
@@ -1562,7 +1624,7 @@ export async function adminSendMoneyCreateJob(
   body: { user_id: string; job: AdminSendMoneyJobCreateBody },
 ) {
   const raw = await request<{ success: boolean; data: AdminSendMoneyJobCreateResult }>(
-    "/api/v1/admins/send-money/jobs",
+    "/api/v1/admin/transfers/send-money/jobs",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1585,10 +1647,47 @@ export type AdminSendMoneyJobRow = {
 /** GET /admins/send-money/jobs/:id */
 export async function adminSendMoneyGetJob(accessToken: string, jobId: string) {
   const raw = await request<{ success: boolean; data: AdminSendMoneyJobRow }>(
-    `/api/v1/admins/send-money/jobs/${encodeURIComponent(jobId)}`,
+    `/api/v1/admin/transfers/send-money/jobs/${encodeURIComponent(jobId)}`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+export type AdminFundingControls = {
+  customer_id: string;
+  force_card_routing: boolean;
+  notes: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+};
+
+/** GET /api/v1/admin/transfers/customers/:id/funding-controls */
+export async function adminGetFundingControls(accessToken: string, customerId: string) {
+  const raw = await request<{ success: boolean; data: AdminFundingControls }>(
+    `/api/v1/admin/transfers/customers/${encodeURIComponent(customerId)}/funding-controls`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
+/** PATCH /api/v1/admin/transfers/customers/:id/funding-controls */
+export async function adminPatchFundingControls(
+  accessToken: string,
+  customerId: string,
+  body: { force_card_routing: boolean; notes?: string },
+) {
+  const raw = await request<{ success: boolean; data: AdminFundingControls }>(
+    `/api/v1/admin/transfers/customers/${encodeURIComponent(customerId)}/funding-controls`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
     },
   );
   return raw.data;

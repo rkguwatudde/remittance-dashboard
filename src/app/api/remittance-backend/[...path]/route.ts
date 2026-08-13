@@ -60,7 +60,7 @@ async function proxyToRemittanceApi(req: NextRequest, pathSegments: string[]) {
         {
           success: false,
           code: "UPSTREAM_UNREACHABLE",
-          message: `Could not reach remittance API at ${getRemittanceApiUpstreamLabel()}.`,
+          message: `Could not reach API gateway at ${getRemittanceApiUpstreamLabel()}.`,
           data: { detail },
         },
         { status: 502 },

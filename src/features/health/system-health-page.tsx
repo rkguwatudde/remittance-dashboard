@@ -70,7 +70,7 @@ export function SystemHealthPage() {
           { label: "API gateway", status: "Operational", icon: Globe, ok: true },
           { label: "Ledger DB", status: "Operational", icon: Database, ok: true },
           { label: "Payment engine", status: "Optimal", icon: ShieldCheck, ok: true },
-          { label: "Auth / SSO", status: "Operational", icon: Server, ok: true },
+          { label: "Identity / staff auth", status: "Operational", icon: Server, ok: true },
         ].map((item) => (
           <Card key={item.label}>
             <CardContent className="flex items-center gap-4 p-5">

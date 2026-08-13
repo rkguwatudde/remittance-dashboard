@@ -19,6 +19,7 @@ import {
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
+import { BoraBondLockup } from "@/components/brand/borabond-logo";
 import { cn } from "@/lib/utils";
 
 const primaryNav = [
@@ -66,16 +67,8 @@ export function AppSidebar({ mobileOpen = false, onNavigate }: AppSidebarProps) 
         mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
       )}
     >
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-sm">
-          BB
-        </div>
-        <div className="min-w-0">
-          <p className="truncate font-semibold tracking-tight text-foreground">
-            BoraBond
-          </p>
-          <p className="text-xs text-muted-foreground">Operations</p>
-        </div>
+      <div className="flex items-center px-4 py-4">
+        <BoraBondLockup size="md" subtitle="Operations" priority />
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">

@@ -15,8 +15,7 @@ const parentHasWorkspaceLockfile = fs.existsSync(
 /**
  * Browser calls `/api/remittance-backend/*` (NEXT_PUBLIC_REMITTANCE_API_URL).
  * Proxying is handled at runtime by `src/app/api/remittance-backend/[...path]/route.ts`
- * using REMITTANCE_API_UPSTREAM (server env). That avoids build-time-only rewrites when
- * Preview env vars change without a rebuild.
+ * using REMITTANCE_API_UPSTREAM (server env) which should be the API gateway.
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,

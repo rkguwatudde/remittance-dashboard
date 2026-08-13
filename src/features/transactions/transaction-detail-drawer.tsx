@@ -3,13 +3,20 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { X } from "lucide-react";
+import { CreditCard, Landmark, Send, Wallet, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AdminRemittanceTransactionRow } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
+
+import {
+  fundingBadgeVariant,
+  resolveFundingView,
+  type FundingKind,
+  type FundingView,
+} from "./funding-presentation";
 
 function statusBadgeVariant(
   status: string,
@@ -42,11 +49,84 @@ function DetailItem({
   );
 }
 
+function formatLedgerAmount(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  if (amount == null || !currency?.trim()) return "—";
+  const code = currency.trim().toUpperCase();
+  const zeroFraction = code === "UGX" || code === "KES" || code === "TZS";
+  return `${amount.toLocaleString("en-US", {
+    maximumFractionDigits: zeroFraction ? 0 : 2,
+    minimumFractionDigits: 0,
+  })} ${code}`;
+}
+
 function feeSummary(tx: AdminRemittanceTransactionRow): string {
   const feeLabel =
     tx.fee_basis_points != null ? `${(tx.fee_basis_points / 100).toFixed(2)}%` : null;
   const charges = tx.fee_charges != null ? `$${tx.fee_charges}` : null;
   return [feeLabel, charges].filter(Boolean).join(" · ") || "—";
+}
+
+function FundingIcon({ kind }: { kind: FundingKind }) {
+  const className = "size-4 shrink-0 text-muted-foreground";
+  if (kind === "card") return <CreditCard className={className} aria-hidden />;
+  if (kind === "wallet") return <Wallet className={className} aria-hidden />;
+  if (kind === "ops") return <Send className={className} aria-hidden />;
+  return <Landmark className={className} aria-hidden />;
+}
+
+function FundingPanel({
+  view,
+  transfer,
+}: {
+  view: FundingView;
+  transfer: AdminRemittanceTransactionRow;
+}) {
+  const guid =
+    view.kind === "cybrid_bank" ? transfer.cybrid_funding_transfer_guid : null;
+  const cardId = view.kind === "card" ? transfer.linked_debit_card_id : null;
+
+  return (
+    <div className="mb-2 rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Customer funding
+      </p>
+      <div className="mt-2 flex items-start gap-3">
+        <div className="mt-0.5 flex size-8 items-center justify-center rounded-lg border border-border bg-surface">
+          <FundingIcon kind={view.kind} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">{view.label}</p>
+            <Badge variant={fundingBadgeVariant(view.kind)} className="capitalize">
+              {view.kind === "cybrid_bank" ? "Bank" : view.kind === "card" ? "Card" : view.label}
+            </Badge>
+          </div>
+          {view.railLabel ? (
+            <p className="mt-0.5 text-sm text-foreground">{view.railLabel}</p>
+          ) : null}
+          {view.instrument ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">{view.instrument}</p>
+          ) : null}
+          {view.decisionLabel ? (
+            <p className="mt-1 text-xs text-muted-foreground">{view.decisionLabel}</p>
+          ) : null}
+          {guid ? (
+            <p className="mt-2 font-mono text-[11px] break-all text-muted-foreground">
+              Cybrid GUID {guid}
+            </p>
+          ) : null}
+          {cardId ? (
+            <p className="mt-2 font-mono text-[11px] break-all text-muted-foreground">
+              Card {cardId}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type TransactionDetailDrawerProps = {
@@ -95,6 +175,7 @@ export function TransactionDetailDrawer({
   if (!mounted || !displayTx) return null;
 
   const feesDisplay = feeSummary(displayTx);
+  const funding = resolveFundingView(displayTx);
 
   const content = (
     <AnimatePresence
@@ -157,12 +238,18 @@ export function TransactionDetailDrawer({
               <Badge variant={statusBadgeVariant(displayTx.status)} className="capitalize">
                 {displayTx.status.toLowerCase().replace(/_/g, " ")}
               </Badge>
+              {funding.kind !== "unknown" ? (
+                <Badge variant={fundingBadgeVariant(funding.kind)}>
+                  {funding.railLabel ? `${funding.label} · ${funding.railLabel}` : funding.label}
+                </Badge>
+              ) : null}
               <span className="text-xs text-muted-foreground">
                 {format(new Date(displayTx.created_at), "MMM d, yyyy · HH:mm:ss")}
               </span>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-2">
+              <FundingPanel view={funding} transfer={displayTx} />
               <dl>
                 <DetailItem label="Customer email" value={displayTx.customer_email} />
                 <DetailItem label="Platform Tx ID" value={displayTx.platform_transaction_id} mono />
@@ -173,9 +260,9 @@ export function TransactionDetailDrawer({
                 <DetailItem
                   label="Remittance amount"
                   value={
-                    displayTx.amount != null
-                      ? `${displayTx.amount.toLocaleString()} ${displayTx.currency}`
-                      : "—"
+                    displayTx.amount_receive != null && displayTx.currency_receive
+                      ? formatLedgerAmount(displayTx.amount_receive, displayTx.currency_receive)
+                      : formatLedgerAmount(displayTx.amount, displayTx.currency)
                   }
                 />
                 <DetailItem
@@ -184,9 +271,12 @@ export function TransactionDetailDrawer({
                     displayTx.amount_send != null || displayTx.amount_receive != null
                       ? [
                           displayTx.amount_send != null &&
-                            `${displayTx.amount_send} ${displayTx.currency_send ?? ""}`,
+                            formatLedgerAmount(displayTx.amount_send, displayTx.currency_send),
                           displayTx.amount_receive != null &&
-                            `${displayTx.amount_receive} ${displayTx.currency_receive ?? ""}`,
+                            formatLedgerAmount(
+                              displayTx.amount_receive,
+                              displayTx.currency_receive,
+                            ),
                         ]
                           .filter(Boolean)
                           .join(" → ")
@@ -203,10 +293,6 @@ export function TransactionDetailDrawer({
                 />
                 <DetailItem label="Fees (spread / charge)" value={feesDisplay} />
                 <DetailItem
-                  label="Cybrid status"
-                  value={displayTx.cybrid_transaction_status ?? "—"}
-                />
-                <DetailItem
                   label="Payout provider status"
                   value={displayTx.payout_provider_status ?? "—"}
                 />
@@ -216,11 +302,6 @@ export function TransactionDetailDrawer({
                 <DetailItem label="Bank sort code" value={displayTx.bank_sort_code} mono />
                 <DetailItem label="Recipient name" value={displayTx.recipient_name} />
                 <DetailItem label="Narration" value={displayTx.narration} />
-                <DetailItem
-                  label="Cybrid funding GUID"
-                  value={displayTx.cybrid_funding_transfer_guid}
-                  mono
-                />
                 <DetailItem
                   label="Updated"
                   value={format(new Date(displayTx.updated_at), "MMM d, yyyy HH:mm:ss")}

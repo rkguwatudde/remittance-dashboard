@@ -6,6 +6,7 @@ import { Bell, ChevronDown, Menu, Search } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
+import { BoraBondMark } from "@/components/brand/borabond-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ export function AppTopbar({ onOpenMobileNav }: AppTopbarProps) {
             <Menu className="size-5" />
           </Button>
         ) : null}
+        <BoraBondMark size="sm" className="md:hidden" />
         <div className="relative min-w-0 max-w-xl flex-1">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input

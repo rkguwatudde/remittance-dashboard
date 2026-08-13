@@ -26,6 +26,11 @@ import {
 import { cn } from "@/lib/utils";
 
 import { TransactionDetailDrawer } from "./transaction-detail-drawer";
+import {
+  formatFundingListLabel,
+  fundingBadgeVariant,
+  resolveFundingView,
+} from "./funding-presentation";
 
 const PAGE_SIZE = 25;
 const EXPORT_CAP = 5000;
@@ -65,9 +70,24 @@ function statusBadgeVariant(
   return "secondary";
 }
 
+function formatLedgerAmount(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  if (amount == null || !currency?.trim()) return "—";
+  const code = currency.trim().toUpperCase();
+  const zeroFraction = code === "UGX" || code === "KES" || code === "TZS";
+  return `${amount.toLocaleString("en-US", {
+    maximumFractionDigits: zeroFraction ? 0 : 2,
+    minimumFractionDigits: 0,
+  })} ${code}`;
+}
+
 function formatRemittanceAmount(row: AdminRemittanceTransactionRow): string {
-  if (row.amount == null) return "—";
-  return `${row.amount.toLocaleString()} ${row.currency}`;
+  if (row.amount_receive != null && row.currency_receive) {
+    return formatLedgerAmount(row.amount_receive, row.currency_receive);
+  }
+  return formatLedgerAmount(row.amount, row.currency);
 }
 
 function formatBond(row: AdminRemittanceTransactionRow): string {
@@ -84,6 +104,15 @@ function formatFees(row: AdminRemittanceTransactionRow): string {
     parts.push(`$${row.fee_charges}`);
   }
   return parts.length ? parts.join(" · ") : "—";
+}
+
+function FundingCell({ row }: { row: AdminRemittanceTransactionRow }) {
+  const funding = resolveFundingView(row);
+  return (
+    <Badge variant={fundingBadgeVariant(funding.kind)} className="whitespace-nowrap">
+      {funding.kind === "unknown" ? "—" : funding.label}
+    </Badge>
+  );
 }
 
 export function TransactionsPage() {
@@ -224,9 +253,11 @@ export function TransactionsPage() {
         "created_at",
         "customer_email",
         "remittance_amount",
+        "funding_method",
+        "funding_label",
+        "funding_rail",
         "bond_usd",
         "fees",
-        "cybrid_status",
         "payout_status",
         "recipient",
         "narration",
@@ -236,14 +267,17 @@ export function TransactionsPage() {
       ];
       const lines = [headers.join(",")];
       for (const r of collected) {
+        const funding = resolveFundingView(r);
         lines.push(
           [
             csvEscape(format(new Date(r.created_at), "yyyy-MM-dd HH:mm:ss")),
             csvEscape(r.customer_email ?? ""),
             csvEscape(formatRemittanceAmount(r)),
+            csvEscape(r.funding_method ?? funding.kind),
+            csvEscape(formatFundingListLabel(funding)),
+            csvEscape(r.funding_rail ?? r.cybrid_transaction_status ?? ""),
             csvEscape(formatBond(r)),
             csvEscape(formatFees(r)),
-            csvEscape(r.cybrid_transaction_status ?? ""),
             csvEscape(r.payout_provider_status ?? ""),
             csvEscape(
               r.transfer_type === "bank"
@@ -281,7 +315,7 @@ export function TransactionsPage() {
             Transactions
           </h1>
           <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
-            Filterable remittance ledger with Cybrid and payout rail context.
+            Filterable remittance ledger with funding method, Cybrid rail, and payout context.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -445,9 +479,9 @@ export function TransactionsPage() {
                 <th className="px-4 py-3">Date / time</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Remittance</th>
+                <th className="px-4 py-3">Funding</th>
                 <th className="px-4 py-3">Bond</th>
                 <th className="px-4 py-3">Fees</th>
-                <th className="px-4 py-3">Cybrid</th>
                 <th className="px-4 py-3">Payout</th>
                 <th className="px-4 py-3">Recipient</th>
                 <th className="px-4 py-3">Narration</th>
@@ -492,14 +526,14 @@ export function TransactionsPage() {
                       <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums text-foreground">
                         {formatRemittanceAmount(row)}
                       </td>
+                      <td className="px-4 py-3">
+                        <FundingCell row={row} />
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">
                         {formatBond(row)}
                       </td>
                       <td className="max-w-[120px] truncate px-4 py-3 text-muted-foreground" title={formatFees(row)}>
                         {formatFees(row)}
-                      </td>
-                      <td className="max-w-[120px] truncate px-4 py-3 text-xs text-muted-foreground" title={row.cybrid_transaction_status ?? ""}>
-                        {row.cybrid_transaction_status ?? "—"}
                       </td>
                       <td className="max-w-[120px] truncate px-4 py-3 text-xs text-muted-foreground" title={row.payout_provider_status ?? ""}>
                         {row.payout_provider_status ?? "—"}

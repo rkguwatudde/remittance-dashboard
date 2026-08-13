@@ -18,6 +18,7 @@ import {
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
 import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
+import { ForceCardRoutingPanel } from "./force-card-routing-panel";
 import { cn } from "@/lib/utils";
 
 function formatSafe(iso: string | null | undefined): string {
@@ -267,6 +268,11 @@ export function UserDetailDrawer({
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-5 py-2">
+                  {isSuperAdmin ? (
+                    <div className="py-3">
+                      <ForceCardRoutingPanel customerId={displayUserId} compact />
+                    </div>
+                  ) : null}
                   {tab === "profile" ? (
                     <dl>
                       <DetailItem label="Email" value={p.email} />

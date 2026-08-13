@@ -8,6 +8,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Building2,
+  CircleCheck,
   CircleX,
   Clock3,
   Hourglass,
@@ -16,6 +17,7 @@ import {
   Radio,
   RefreshCw,
   Send,
+  ShieldCheck,
   Smartphone,
   Wallet,
 } from "lucide-react";
@@ -37,16 +39,43 @@ import { cn } from "@/lib/utils";
 
 const POLL_MS = 30_000;
 
-function formatVolume(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency.length === 3 ? currency : "UGX",
-      maximumFractionDigits: amount >= 1_000_000 ? 0 : 2,
+function formatExactAmount(amount: number, currency: string): string {
+  const code = currency.length === 3 ? currency.toUpperCase() : "UGX";
+  const zeroFraction = code === "UGX" || code === "KES" || code === "TZS";
+  const exact = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: zeroFraction ? 0 : 2,
+    minimumFractionDigits: 0,
+  }).format(amount);
+  return `${code} ${exact}`;
+}
+
+function formatVolume(amount: number, currency: string): {
+  display: string;
+  detail: string;
+  exact: string;
+} {
+  const code = currency.length === 3 ? currency.toUpperCase() : "UGX";
+  const exact = formatExactAmount(amount, code);
+  const digits = exact.slice(code.length).trim();
+
+  if (Math.abs(amount) >= 1_000_000) {
+    const compact = new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      compactDisplay: "short",
+      maximumFractionDigits: 2,
     }).format(amount);
-  } catch {
-    return `${amount.toLocaleString()} ${currency}`;
+    return {
+      display: `${compact} ${code}`,
+      detail: `Successful payouts · ${exact}`,
+      exact,
+    };
   }
+
+  return {
+    display: `${digits} ${code}`,
+    detail: `Successful payouts · ${code} received`,
+    exact,
+  };
 }
 
 function railLabel(status: AdminDashboardRailHealth["status"]): string {
@@ -116,7 +145,7 @@ function RailRow({
 
 function KpiCardSkeleton() {
   return (
-    <Card className="overflow-hidden border-border/80">
+    <Card className="min-w-0 overflow-hidden border-border/80">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <Skeleton className="size-10 rounded-xl" />
@@ -153,7 +182,7 @@ function DashboardOverviewPlaceholder() {
       aria-busy="true"
       aria-label="Loading dashboard metrics"
     >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {Array.from({ length: 5 }, (_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
@@ -252,6 +281,17 @@ export function DashboardHome() {
   };
 
   const kpis = overview?.kpis;
+  const volume =
+    isSuperAdmin && kpis?.totalVolumeSent != null
+      ? formatVolume(kpis.totalVolumeSent, kpis.volumeCurrency ?? "UGX")
+      : null;
+  const walletLabel =
+    isSuperAdmin && overview?.wallet.balance != null
+      ? formatExactAmount(overview.wallet.balance, overview.wallet.currency ?? "UGX")
+      : null;
+  const exceptionCount = kpis
+    ? kpis.pendingTransactions + kpis.failedTransactions
+    : 0;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-8">
@@ -277,8 +317,8 @@ export function DashboardHome() {
             </Badge>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground md:text-[15px]">
-            Volume, pipeline health, and rail status across remittance. Refreshes every{" "}
-            {POLL_MS / 1000}s while this page is open.
+            Volume and pipeline from <span className="font-mono">transfer.transfers</span> via the
+            API gateway. Refreshes every {POLL_MS / 1000}s while this page is open.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -337,17 +377,27 @@ export function DashboardHome() {
 
       {kpis ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <KpiCard
-              title="Total volume sent"
-              value={formatVolume(kpis.totalVolumeSent, kpis.volumeCurrency)}
-              subtitle={`Successful transfers · primary currency ${kpis.volumeCurrency}`}
-              icon={ArrowUpRight}
-            />
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {isSuperAdmin && volume ? (
+              <KpiCard
+                title="Total volume sent"
+                value={volume.display}
+                subtitle={volume.detail}
+                valueTitle={volume.exact}
+                icon={ArrowUpRight}
+              />
+            ) : (
+              <KpiCard
+                title="Settled"
+                value={kpis.successfulTransactions.toLocaleString()}
+                subtitle="Paid out successfully"
+                icon={CircleCheck}
+              />
+            )}
             <KpiCard
               title="Total transactions"
               value={kpis.totalTransactions.toLocaleString()}
-              subtitle="All remittance rows"
+              subtitle="All transfer-service rows"
               icon={Activity}
             />
             <KpiCard
@@ -376,44 +426,85 @@ export function DashboardHome() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <Wallet className="size-4 text-primary" />
-                  <CardTitle>Wallet balance</CardTitle>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Active remittance provider float (live probe).
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {overview.wallet.error ? (
-                  <p className="text-sm text-warning">{overview.wallet.error}</p>
-                ) : overview.wallet.balance != null ? (
-                  <>
-                    <p className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {overview.wallet.balance.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })}
+            <Card className="@container min-w-0">
+              {isSuperAdmin ? (
+                <>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="size-4 text-primary" />
+                      <CardTitle>Wallet balance</CardTitle>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Active remittance provider float (live Pegasus GetAccountBalance).
+                    </p>
+                  </CardHeader>
+                  <CardContent className="min-w-0 space-y-3">
+                    {overview.wallet.error ? (
+                      <p className="text-sm text-warning">{overview.wallet.error}</p>
+                    ) : walletLabel ? (
+                      <>
+                        <p
+                          className="max-w-full font-semibold leading-[1.15] tracking-tight break-words tabular-nums text-foreground text-[clamp(1.25rem,6cqi,1.875rem)]"
+                          title={walletLabel}
+                        >
+                          {walletLabel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Provider{" "}
+                          <span className="font-mono text-foreground">
+                            {overview.wallet.provider ?? "pegasus"}
+                          </span>
+                          {" · live probe"}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No balance available.</p>
+                    )}
+                    <Link
+                      href="/transactions"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      View transactions
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </CardContent>
+                </>
+              ) : (
+                <>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="size-4 text-primary" />
+                      <CardTitle>Exceptions</CardTitle>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Transfers still in flight or already failed — work these first.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="min-w-0 space-y-3">
+                    <p className="max-w-full font-semibold leading-[1.15] tracking-tight tabular-nums text-foreground text-[clamp(1.25rem,6cqi,1.875rem)]">
+                      {exceptionCount.toLocaleString()}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Provider{" "}
-                      <span className="font-mono text-foreground">
-                        {overview.wallet.provider ?? "—"}
-                      </span>
+                      <span className="tabular-nums text-foreground">
+                        {kpis.pendingTransactions.toLocaleString()}
+                      </span>{" "}
+                      queued
+                      {" · "}
+                      <span className="tabular-nums text-foreground">
+                        {kpis.failedTransactions.toLocaleString()}
+                      </span>{" "}
+                      failed
                     </p>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No balance available.</p>
-                )}
-                <Link
-                  href="/transactions"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                >
-                  View transactions
-                  <ArrowRight className="size-4" />
-                </Link>
-              </CardContent>
+                    <Link
+                      href="/queue"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                    >
+                      Review exceptions
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </CardContent>
+                </>
+              )}
             </Card>
 
             <Card>
@@ -423,7 +514,7 @@ export function DashboardHome() {
                   <CardTitle>System health</CardTitle>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Cybrid inferred from ACH outcomes; MM / bank from provider probes.
+                  Cybrid / MM / bank inferred from transfer-service outcomes (last 24h).
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">

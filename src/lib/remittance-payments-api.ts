@@ -1,12 +1,9 @@
 /**
- * End-user remittance API — same path as the mobile app (`/api/v1/remittance/payments`).
- * Requires the sender's app JWT (AuthGuard jwt), not the ops admin token.
+ * Ops send-money: same-origin `/api/remittance-payments` → API gateway
+ * `POST /api/v1/admin/transfers` (staff JWT only — no customer impersonation).
  */
 
 import { AdminApiError } from "@/lib/remittance-admin-api";
-
-const baseUrl = () =>
-  (process.env.NEXT_PUBLIC_REMITTANCE_API_URL || "http://localhost:9002").replace(/\/$/, "");
 
 async function parseJson(res: Response): Promise<unknown> {
   const text = await res.text();
@@ -45,22 +42,6 @@ function formatDashboardProxyError(body: unknown, fallback: string): string {
   return `${base}\n\n${lines.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
 }
 
-export function parseJwtUserId(token: string): string | null {
-  const trimmed = token.trim();
-  const parts = trimmed.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = parts[1];
-    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
-    const json = JSON.parse(atob(b64 + pad)) as Record<string, unknown>;
-    const sub = json.sub ?? json.id ?? json.userId;
-    return typeof sub === "string" ? sub.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
 export type RemittancePaymentQueued = {
   transactionId: string;
   status: string;
@@ -83,40 +64,15 @@ export function unwrapRemittancePaymentQueued(raw: unknown): RemittancePaymentQu
   throw new AdminApiError("Unexpected payments response shape", "BAD_RESPONSE", 500);
 }
 
-/** Direct to remittance API (mobile app path). Prefer {@link postRemittancePaymentsViaDashboardProxy} from the ops dashboard. */
-export async function postRemittancePayments(
-  userAccessToken: string,
-  body: Record<string, unknown>,
-): Promise<RemittancePaymentQueued> {
-  const url = `${baseUrl()}/api/v1/remittance/payments`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${userAccessToken.trim()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const raw = await parseJson(res);
-
-  if (!res.ok) {
-    const code =
-      raw && typeof raw === "object" && typeof (raw as { code?: string }).code === "string"
-        ? (raw as { code: string }).code
-        : `HTTP_${res.status}`;
-    throw new AdminApiError(parseApiMessage(raw, res.statusText || "Payment failed"), code, res.status);
-  }
-
-  return unwrapRemittancePaymentQueued(raw);
-}
-
 /**
- * Dashboard-only: same-origin `/api/remittance-payments` uses the server env map + ops session; no app JWT on the client.
+ * Dashboard-only: same-origin `/api/remittance-payments` uses the staff session.
+ * The Next.js route forwards to the API gateway; the browser never talks to a customer API.
  */
 export async function postRemittancePaymentsViaDashboardProxy(
   adminAccessToken: string,
   userId: string,
   payment: Record<string, unknown>,
+  sendMoneyOtpToken: string,
 ): Promise<RemittancePaymentQueued> {
   const res = await fetch("/api/remittance-payments", {
     method: "POST",
@@ -124,7 +80,11 @@ export async function postRemittancePaymentsViaDashboardProxy(
       Authorization: `Bearer ${adminAccessToken.trim()}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ user_id: userId.trim(), payment }),
+    body: JSON.stringify({
+      user_id: userId.trim(),
+      payment,
+      send_money_otp_token: sendMoneyOtpToken.trim(),
+    }),
   });
   const raw = await parseJson(res);
 

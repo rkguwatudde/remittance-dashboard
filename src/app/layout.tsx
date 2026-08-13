@@ -24,6 +24,10 @@ export const metadata: Metadata = {
   },
   description:
     "Internal remittance operations console for monitoring corridors, queues, and settlement.",
+  icons: {
+    icon: "/brand/borabond-mark.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

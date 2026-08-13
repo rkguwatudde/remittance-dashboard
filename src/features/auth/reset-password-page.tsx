@@ -9,6 +9,7 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { BoraBondMark } from "@/components/brand/borabond-logo";
 import { AC_NEW } from "@/lib/form-autocomplete";
 import { adminResetPassword, AdminApiError } from "@/lib/remittance-admin-api";
 
@@ -74,6 +75,10 @@ export function ResetPasswordPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-surface-muted/40 px-4 py-10">
       <div className="w-full max-w-[440px] space-y-8">
+        <div className="flex justify-center">
+          <BoraBondMark size="lg" priority />
+        </div>
+
         <Link
           href="/login"
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"

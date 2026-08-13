@@ -8,6 +8,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConcealedInput } from "@/components/ui/concealed-input";
+import { BoraBondLockup } from "@/components/brand/borabond-logo";
 import { AC_EXISTING, AC_NEW } from "@/lib/form-autocomplete";
 import { adminUpdateSignIn, AdminApiError } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
@@ -78,9 +79,13 @@ export function MandatorySignInUpdateScreen() {
     <div className="flex min-h-dvh flex-col items-center justify-center bg-surface-muted/40 px-4 py-10">
       <div className="w-full max-w-[480px] space-y-8">
         <div className="space-y-3 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/25">
-            BB
-          </div>
+          <BoraBondLockup
+            size="lg"
+            stacked
+            href={null}
+            subtitle={null}
+            priority
+          />
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Set a new sign-in</h1>
           <p className="text-sm text-muted-foreground">
             {user?.email
