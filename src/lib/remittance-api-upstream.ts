@@ -3,16 +3,37 @@
  * Do not use NEXT_PUBLIC_REMITTANCE_API_URL here — that is the browser-relative proxy path.
  */
 const STAGING_UPSTREAM_DEFAULT = "https://staging-api.borabond.com";
+const PRODUCTION_UPSTREAM_DEFAULT = "https://api.borabond.com";
+
+/**
+ * Old remittance Nest (:9002) hosts. Cloudflare 522s because that origin is down.
+ * Admin APIs now live on the API gateway (:9000).
+ */
+const DEPRECATED_REMITTANCE_ORIGINS: Record<string, string> = {
+  "staging-remittance.borabond.com": STAGING_UPSTREAM_DEFAULT,
+  "www.staging-remittance.borabond.com": STAGING_UPSTREAM_DEFAULT,
+  "remittance.api.borabond.com": PRODUCTION_UPSTREAM_DEFAULT,
+};
+
+export function rewriteDeprecatedApiOrigin(url: string): string {
+  const trimmed = url.trim().replace(/\/$/, "");
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    return DEPRECATED_REMITTANCE_ORIGINS[host] ?? trimmed;
+  } catch {
+    return trimmed;
+  }
+}
 
 export function getRemittanceApiUpstream(): string {
   const upstream = process.env.REMITTANCE_API_UPSTREAM?.trim();
   if (upstream && !upstream.startsWith("/")) {
-    return upstream.replace(/\/$/, "");
+    return rewriteDeprecatedApiOrigin(upstream);
   }
 
   const direct = process.env.REMITTANCE_API_URL?.trim();
   if (direct && !direct.startsWith("/")) {
-    return direct.replace(/\/$/, "");
+    return rewriteDeprecatedApiOrigin(direct);
   }
 
   // Preview deploys (e.g. remittance-staging.borabond.com) often only have Production env in Vercel UI.

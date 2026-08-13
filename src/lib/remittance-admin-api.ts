@@ -1,16 +1,23 @@
 /**
  * Platform admin API via the API gateway (`/api/v1/admin/{domain}/*`).
  *
- * Base URL: NEXT_PUBLIC_REMITTANCE_API_URL
- * - Local: `/api/remittance-backend` (same-origin proxy → gateway :9000)
- * - Direct gateway: http://localhost:9000
+ * Browser always uses the same-origin proxy. Absolute NEXT_PUBLIC values
+ * (including the retired staging-remittance.borabond.com host) are ignored
+ * so Cloudflare HTML error pages never hit the UI.
  */
 
-const baseUrl = () =>
-  (process.env.NEXT_PUBLIC_REMITTANCE_API_URL || "/api/remittance-backend").replace(
+import { isHtmlPayload, messageForHtmlUpstream } from "@/lib/html-api-error";
+
+const SAME_ORIGIN_PROXY = "/api/remittance-backend";
+
+const baseUrl = () => {
+  const raw = (process.env.NEXT_PUBLIC_REMITTANCE_API_URL || SAME_ORIGIN_PROXY).replace(
     /\/$/,
     "",
   );
+  if (!raw || raw.startsWith("/")) return raw || SAME_ORIGIN_PROXY;
+  return SAME_ORIGIN_PROXY;
+};
 
 export class AdminApiError extends Error {
   constructor(
@@ -27,7 +34,9 @@ function parseApiMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
   const o = body as Record<string, unknown>;
   const m = o.message;
-  if (typeof m === "string" && m) return m;
+  if (typeof m === "string" && m) {
+    return isHtmlPayload(m) ? messageForHtmlUpstream(m) : m;
+  }
   if (Array.isArray(m)) {
     const parts = m.map((x) =>
       typeof x === "object" && x && "constraints" in x
@@ -42,6 +51,12 @@ function parseApiMessage(body: unknown, fallback: string): string {
 async function parseJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
+  if (isHtmlPayload(text)) {
+    return {
+      message: messageForHtmlUpstream(text),
+      code: "UPSTREAM_HTML_ERROR",
+    };
+  }
   try {
     return JSON.parse(text) as unknown;
   } catch {
