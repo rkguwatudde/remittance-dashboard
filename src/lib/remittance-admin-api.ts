@@ -643,6 +643,27 @@ export type AdminRemittanceTransactionRow = {
   funding_account_mask?: string | null;
   linked_bank_account_id?: string | null;
   linked_debit_card_id?: string | null;
+  split_funding?: boolean;
+  funding_legs?: AdminFundingLeg[];
+};
+
+export type AdminFundingLeg = {
+  role: "remittance" | "bond";
+  amount_cents: number | null;
+  amount_usd: number | null;
+  funding_method: string | null;
+  funding_kind: "card" | "cybrid_bank" | "wallet" | "ops" | "unknown" | null;
+  funding_label: string;
+  funding_rail: string | null;
+  funding_rail_label: string | null;
+  funding_instrument: string | null;
+  status: string | null;
+  payment_transfer_id: string | null;
+  provider_reference: string | null;
+  cybrid_funding_transfer_guid: string | null;
+  linked_bank_account_id: string | null;
+  linked_debit_card_id: string | null;
+  failure_reason: string | null;
 };
 
 export type AdminRemittanceTransactionsResult = {
@@ -1333,6 +1354,79 @@ export async function adminPullFundsExecute(
   return raw.data;
 }
 
+export type AdminBankDeleteRequest = {
+  id: string;
+  customer_id: string | null;
+  email: string;
+  reason: string | null;
+  source: string;
+  status: string;
+  reference_id: string | null;
+  linked_bank_account_id: string | null;
+  bank_name: string | null;
+  account_mask: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** GET /api/v1/admin/payments/bank-delete-requests */
+export async function adminListBankDeleteRequests(
+  accessToken: string,
+  params?: { status?: string; limit?: number },
+) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const raw = await request<{ success: boolean; data: AdminBankDeleteRequest[] }>(
+    `/api/v1/admin/payments/bank-delete-requests${suffix}`,
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+/** POST /api/v1/admin/payments/bank-delete-requests/:id/approve */
+export async function adminApproveBankDeleteRequest(
+  accessToken: string,
+  requestId: string,
+  notes?: string,
+) {
+  const raw = await request<{
+    success: boolean;
+    data: {
+      requestId: string;
+      deleted: boolean;
+      customerId: string | null;
+      referenceId: string | null;
+    };
+  }>(`/api/v1/admin/payments/bank-delete-requests/${encodeURIComponent(requestId)}/approve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: notes?.trim() ? { notes: notes.trim() } : {},
+  });
+  return raw.data;
+}
+
+/** POST /api/v1/admin/payments/bank-delete-requests/:id/reject */
+export async function adminRejectBankDeleteRequest(
+  accessToken: string,
+  requestId: string,
+  notes?: string,
+) {
+  const raw = await request<{
+    success: boolean;
+    data: { requestId: string; status: string };
+  }>(`/api/v1/admin/payments/bank-delete-requests/${encodeURIComponent(requestId)}/reject`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: notes?.trim() ? { notes: notes.trim() } : {},
+  });
+  return raw.data;
+}
+
 export type CybridQuoteLike = {
   guid: string;
   product_type?: string;
@@ -1674,6 +1768,8 @@ export async function adminSendMoneyGetJob(accessToken: string, jobId: string) {
 export type AdminFundingControls = {
   customer_id: string;
   force_card_routing: boolean;
+  /** NEW-customer ACH trust; absent on older API responses → treat as false. */
+  manual_ach_override?: boolean;
   notes: string | null;
   updated_by: string | null;
   updated_at: string | null;
@@ -1695,7 +1791,11 @@ export async function adminGetFundingControls(accessToken: string, customerId: s
 export async function adminPatchFundingControls(
   accessToken: string,
   customerId: string,
-  body: { force_card_routing: boolean; notes?: string },
+  body: {
+    force_card_routing?: boolean;
+    manual_ach_override?: boolean;
+    notes?: string;
+  },
 ) {
   const raw = await request<{ success: boolean; data: AdminFundingControls }>(
     `/api/v1/admin/transfers/customers/${encodeURIComponent(customerId)}/funding-controls`,

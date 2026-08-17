@@ -2,6 +2,5 @@
 
 export {
   CustomerFundingControlsPanels,
-  ForceCardRoutingPanel,
   ManualAchOverridePanel,
 } from "./customer-funding-controls-panels";

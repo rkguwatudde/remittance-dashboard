@@ -18,7 +18,7 @@ import {
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
 import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
-import { ForceCardRoutingPanel } from "./force-card-routing-panel";
+import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
 function formatSafe(iso: string | null | undefined): string {
@@ -270,7 +270,7 @@ export function UserDetailDrawer({
                 <div className="flex-1 overflow-y-auto px-5 py-2">
                   {isSuperAdmin ? (
                     <div className="py-3">
-                      <ForceCardRoutingPanel customerId={displayUserId} compact />
+                      <CustomerFundingControlsPanels customerId={displayUserId} compact />
                     </div>
                   ) : null}
                   {tab === "profile" ? (

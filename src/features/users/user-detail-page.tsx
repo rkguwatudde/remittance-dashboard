@@ -16,7 +16,7 @@ import {
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
 import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
-import { ForceCardRoutingPanel } from "./force-card-routing-panel";
+import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
 type Tab = "profile" | "cybrid" | "activity";
@@ -242,7 +242,7 @@ export function UserDetailPage({ userId }: { userId: string }) {
         </div>
       ) : null}
 
-      {isSuperAdmin ? <ForceCardRoutingPanel customerId={userId} /> : null}
+      {isSuperAdmin ? <CustomerFundingControlsPanels customerId={userId} /> : null}
 
       <div className="flex gap-1 border-b border-border">
         {(

@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import {
   AdminApiError,
+  adminRemittanceTransactionById,
   adminRemittanceTransactions,
   type AdminRemittanceTransactionRow,
 } from "@/lib/remittance-admin-api";
@@ -27,8 +28,9 @@ import { cn } from "@/lib/utils";
 
 import { TransactionDetailDrawer } from "./transaction-detail-drawer";
 import {
-  formatFundingListLabel,
+  formatSplitFundingListLabel,
   fundingBadgeVariant,
+  resolveFundingLegs,
   resolveFundingView,
 } from "./funding-presentation";
 
@@ -107,10 +109,12 @@ function formatFees(row: AdminRemittanceTransactionRow): string {
 }
 
 function FundingCell({ row }: { row: AdminRemittanceTransactionRow }) {
-  const funding = resolveFundingView(row);
+  const legs = resolveFundingLegs(row);
+  const label = formatSplitFundingListLabel(legs);
+  const kind = legs.length > 1 ? "cybrid_bank" : (legs[0]?.kind ?? resolveFundingView(row).kind);
   return (
-    <Badge variant={fundingBadgeVariant(funding.kind)} className="whitespace-nowrap">
-      {funding.kind === "unknown" ? "—" : funding.label}
+    <Badge variant={fundingBadgeVariant(kind)} className="whitespace-nowrap">
+      {label}
     </Badge>
   );
 }
@@ -196,6 +200,22 @@ export function TransactionsPage() {
     }
   }, [getAccessToken, refreshAccessToken, buildQuery, offset]);
 
+  const openTransaction = React.useCallback(
+    async (row: AdminRemittanceTransactionRow) => {
+      setSelected(row);
+      setDrawerOpen(true);
+      const token = getAccessToken();
+      if (!token) return;
+      try {
+        const fresh = await adminRemittanceTransactionById(token, row.id);
+        setSelected(fresh);
+      } catch {
+        // Keep the list row if the detail refresh fails.
+      }
+    },
+    [getAccessToken],
+  );
+
   React.useEffect(() => {
     void load();
   }, [load]);
@@ -257,6 +277,9 @@ export function TransactionsPage() {
         "funding_label",
         "funding_rail",
         "bond_usd",
+        "bond_funding_method",
+        "bond_funding_status",
+        "bond_cybrid_transfer_guid",
         "fees",
         "payout_status",
         "recipient",
@@ -268,15 +291,20 @@ export function TransactionsPage() {
       const lines = [headers.join(",")];
       for (const r of collected) {
         const funding = resolveFundingView(r);
+        const legs = resolveFundingLegs(r);
+        const bondLeg = legs.find((leg) => leg.role === "bond");
         lines.push(
           [
             csvEscape(format(new Date(r.created_at), "yyyy-MM-dd HH:mm:ss")),
             csvEscape(r.customer_email ?? ""),
             csvEscape(formatRemittanceAmount(r)),
             csvEscape(r.funding_method ?? funding.kind),
-            csvEscape(formatFundingListLabel(funding)),
+            csvEscape(formatSplitFundingListLabel(legs)),
             csvEscape(r.funding_rail ?? r.cybrid_transaction_status ?? ""),
             csvEscape(formatBond(r)),
+            csvEscape(bondLeg ? "bank" : ""),
+            csvEscape(bondLeg?.status ?? ""),
+            csvEscape(bondLeg?.cybridGuid ?? ""),
             csvEscape(formatFees(r)),
             csvEscape(r.payout_provider_status ?? ""),
             csvEscape(
@@ -504,14 +532,12 @@ export function TransactionsPage() {
                       key={row.id}
                       className="cursor-pointer transition-colors hover:bg-surface-muted/60"
                       onClick={() => {
-                        setSelected(row);
-                        setDrawerOpen(true);
+                        void openTransaction(row);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelected(row);
-                          setDrawerOpen(true);
+                          void openTransaction(row);
                         }
                       }}
                       role="button"

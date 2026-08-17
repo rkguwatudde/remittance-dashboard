@@ -1,4 +1,7 @@
-import type { AdminRemittanceTransactionRow } from "@/lib/remittance-admin-api";
+import type {
+  AdminFundingLeg,
+  AdminRemittanceTransactionRow,
+} from "@/lib/remittance-admin-api";
 
 export type FundingKind = "card" | "cybrid_bank" | "wallet" | "ops" | "unknown";
 
@@ -8,6 +11,17 @@ export type FundingView = {
   railLabel: string | null;
   decisionLabel: string | null;
   instrument: string | null;
+};
+
+export type FundingLegView = FundingView & {
+  role: "remittance" | "bond";
+  amountUsd: number | null;
+  status: string | null;
+  providerReference: string | null;
+  paymentTransferId: string | null;
+  cybridGuid: string | null;
+  cardId: string | null;
+  failureReason: string | null;
 };
 
 const ACH_RAILS = new Set([
@@ -36,10 +50,15 @@ const DECISION_LABEL: Record<string, string> = {
   CUSTOMER_SELECTED_CARD: "Customer selected debit card",
   SYSTEM_ROUTED_CARD: "System routed to debit card",
   SYSTEM_ROUTED_BANK: "System routed to Cybrid bank",
+  NEW_CUSTOMER_CARD_REQUIRED: "New customer must fund remittance with a debit card",
   BOND_OVERRIDE: "Bond allocation requires Cybrid bank",
   EXISTING_CUSTOMER_ROUTING: "Returning customer · Cybrid bank",
   TRUSTED_CUSTOMER_DEFAULT: "Trusted customer · ACH default",
   FORCED_CARD_ROUTING: "Forced debit-card routing",
+  FORCE_CARD_SPLIT_BOND_ACH:
+    "Forced card remittance + Cybrid bank bond (split)",
+  CUSTOMER_CARD_SPLIT_BOND_ACH:
+    "Customer card remittance + Cybrid bank bond (split)",
   ACH_BLOCKED_CARD_FALLBACK: "ACH blocked · card fallback",
   MANUAL_ACH_OVERRIDE: "Manual ACH override",
   WALLET: "Wallet funding",
@@ -99,6 +118,45 @@ export function resolveFundingView(tx: AdminRemittanceTransactionRow): FundingVi
   };
 }
 
+function mapApiLeg(leg: AdminFundingLeg, tx: AdminRemittanceTransactionRow): FundingLegView {
+  const kind = isFundingKind(leg.funding_kind) ? leg.funding_kind : "unknown";
+  return {
+    role: leg.role === "bond" ? "bond" : "remittance",
+    kind,
+    label: leg.funding_label || KIND_LABEL[kind],
+    railLabel: leg.funding_rail_label ?? null,
+    decisionLabel: tx.funding_decision_label ?? null,
+    instrument: leg.funding_instrument ?? null,
+    amountUsd: leg.amount_usd,
+    status: leg.status,
+    providerReference: leg.provider_reference,
+    paymentTransferId: leg.payment_transfer_id,
+    cybridGuid: leg.cybrid_funding_transfer_guid,
+    cardId: leg.linked_debit_card_id,
+    failureReason: leg.failure_reason,
+  };
+}
+
+export function resolveFundingLegs(tx: AdminRemittanceTransactionRow): FundingLegView[] {
+  if (tx.funding_legs && tx.funding_legs.length > 0) {
+    return tx.funding_legs.map((leg) => mapApiLeg(leg, tx));
+  }
+  const primary = resolveFundingView(tx);
+  return [
+    {
+      ...primary,
+      role: "remittance",
+      amountUsd: tx.amount_send,
+      status: tx.status,
+      providerReference: tx.provider_reference,
+      paymentTransferId: null,
+      cybridGuid: tx.cybrid_funding_transfer_guid,
+      cardId: tx.linked_debit_card_id ?? null,
+      failureReason: tx.error_message,
+    },
+  ];
+}
+
 export function fundingBadgeVariant(
   kind: FundingKind,
 ): "default" | "secondary" | "outline" | "success" {
@@ -112,4 +170,18 @@ export function fundingBadgeVariant(
 export function formatFundingListLabel(view: FundingView): string {
   if (view.kind === "unknown") return "—";
   return view.railLabel ? `${view.label} · ${view.railLabel}` : view.label;
+}
+
+export function formatSplitFundingListLabel(legs: FundingLegView[]): string {
+  if (legs.length === 0) return "—";
+  if (legs.length === 1) return formatFundingListLabel(legs[0]);
+  return legs
+    .map((leg) =>
+      leg.role === "bond"
+        ? "Bank/ACH"
+        : leg.kind === "card"
+          ? "Card"
+          : formatFundingListLabel(leg),
+    )
+    .join(" + ");
 }
