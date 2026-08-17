@@ -13,9 +13,10 @@ import { cn } from "@/lib/utils";
 
 import {
   fundingBadgeVariant,
+  resolveFundingLegs,
   resolveFundingView,
   type FundingKind,
-  type FundingView,
+  type FundingLegView,
 } from "./funding-presentation";
 
 function statusBadgeVariant(
@@ -78,50 +79,73 @@ function FundingIcon({ kind }: { kind: FundingKind }) {
 }
 
 function FundingPanel({
-  view,
-  transfer,
+  leg,
 }: {
-  view: FundingView;
-  transfer: AdminRemittanceTransactionRow;
+  leg: FundingLegView;
 }) {
-  const guid =
-    view.kind === "cybrid_bank" ? transfer.cybrid_funding_transfer_guid : null;
-  const cardId = view.kind === "card" ? transfer.linked_debit_card_id : null;
+  const title = leg.role === "bond" ? "Bond allocation" : "Remittance";
+  const methodBadge =
+    leg.kind === "cybrid_bank" ? "Bank/ACH" : leg.kind === "card" ? "Card" : leg.label;
+  const guid = leg.kind === "cybrid_bank" ? leg.cybridGuid : null;
+  const cardId = leg.kind === "card" ? leg.cardId : null;
 
   return (
-    <div className="mb-2 rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
+    <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Customer funding
+        {title}
       </p>
       <div className="mt-2 flex items-start gap-3">
         <div className="mt-0.5 flex size-8 items-center justify-center rounded-lg border border-border bg-surface">
-          <FundingIcon kind={view.kind} />
+          <FundingIcon kind={leg.kind} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">{view.label}</p>
-            <Badge variant={fundingBadgeVariant(view.kind)} className="capitalize">
-              {view.kind === "cybrid_bank" ? "Bank" : view.kind === "card" ? "Card" : view.label}
+            <p className="text-sm font-semibold text-foreground">{leg.label}</p>
+            <Badge variant={fundingBadgeVariant(leg.kind)} className="capitalize">
+              {methodBadge}
             </Badge>
+            {leg.status ? (
+              <Badge variant={statusBadgeVariant(leg.status)} className="capitalize">
+                {leg.status.toLowerCase().replace(/_/g, " ")}
+              </Badge>
+            ) : null}
           </div>
-          {view.railLabel ? (
-            <p className="mt-0.5 text-sm text-foreground">{view.railLabel}</p>
+          {leg.amountUsd != null ? (
+            <p className="mt-0.5 text-sm text-foreground">
+              ${leg.amountUsd.toFixed(2)}
+            </p>
           ) : null}
-          {view.instrument ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{view.instrument}</p>
+          {leg.railLabel ? (
+            <p className="mt-0.5 text-sm text-foreground">{leg.railLabel}</p>
           ) : null}
-          {view.decisionLabel ? (
-            <p className="mt-1 text-xs text-muted-foreground">{view.decisionLabel}</p>
+          {leg.instrument ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">{leg.instrument}</p>
+          ) : null}
+          {leg.role === "remittance" && leg.decisionLabel ? (
+            <p className="mt-1 text-xs text-muted-foreground">{leg.decisionLabel}</p>
           ) : null}
           {guid ? (
             <p className="mt-2 font-mono text-[11px] break-all text-muted-foreground">
-              Cybrid GUID {guid}
+              Cybrid transfer {guid}
+            </p>
+          ) : null}
+          {leg.providerReference && leg.providerReference !== guid ? (
+            <p className="mt-1 font-mono text-[11px] break-all text-muted-foreground">
+              Reference {leg.providerReference}
+            </p>
+          ) : null}
+          {leg.paymentTransferId ? (
+            <p className="mt-1 font-mono text-[11px] break-all text-muted-foreground">
+              Payment transfer {leg.paymentTransferId}
             </p>
           ) : null}
           {cardId ? (
             <p className="mt-2 font-mono text-[11px] break-all text-muted-foreground">
               Card {cardId}
             </p>
+          ) : null}
+          {leg.failureReason ? (
+            <p className="mt-2 text-xs text-destructive">{leg.failureReason}</p>
           ) : null}
         </div>
       </div>
@@ -176,6 +200,7 @@ export function TransactionDetailDrawer({
 
   const feesDisplay = feeSummary(displayTx);
   const funding = resolveFundingView(displayTx);
+  const fundingLegs = resolveFundingLegs(displayTx);
 
   const content = (
     <AnimatePresence
@@ -238,7 +263,9 @@ export function TransactionDetailDrawer({
               <Badge variant={statusBadgeVariant(displayTx.status)} className="capitalize">
                 {displayTx.status.toLowerCase().replace(/_/g, " ")}
               </Badge>
-              {funding.kind !== "unknown" ? (
+              {fundingLegs.length > 1 ? (
+                <Badge variant="outline">Split funding</Badge>
+              ) : funding.kind !== "unknown" ? (
                 <Badge variant={fundingBadgeVariant(funding.kind)}>
                   {funding.railLabel ? `${funding.label} · ${funding.railLabel}` : funding.label}
                 </Badge>
@@ -249,7 +276,11 @@ export function TransactionDetailDrawer({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-2">
-              <FundingPanel view={funding} transfer={displayTx} />
+              <div className="mb-2 flex flex-col gap-2">
+                {fundingLegs.map((leg) => (
+                  <FundingPanel key={`${leg.role}-${leg.paymentTransferId ?? leg.kind}`} leg={leg} />
+                ))}
+              </div>
               <dl>
                 <DetailItem label="Customer email" value={displayTx.customer_email} />
                 <DetailItem label="Platform Tx ID" value={displayTx.platform_transaction_id} mono />
