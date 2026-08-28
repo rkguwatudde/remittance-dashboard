@@ -15,7 +15,7 @@ export function isHtmlPayload(text: string): boolean {
 export function messageForHtmlUpstream(text: string, upstreamHost?: string): string {
   const host = upstreamHost ? ` (${upstreamHost})` : "";
   if (/error code 522|522:\s*connection timed out/i.test(text)) {
-    return `API origin timed out (Cloudflare 522)${host}. The dashboard must use the API gateway (staging-api.borabond.com / api.borabond.com), not staging-remittance.borabond.com.`;
+    return `API origin timed out (Cloudflare 522)${host}. The dashboard must use the API gateway (staging-api.borabond.com / core-api.borabond.com), not staging-remittance.borabond.com.`;
   }
   if (/error code 524|524:\s*a timeout occurred/i.test(text)) {
     return `API origin timed out (Cloudflare 524)${host}. The gateway did not finish the request.`;

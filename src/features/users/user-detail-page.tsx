@@ -15,7 +15,7 @@ import {
   type AdminPullFundsExecuteResponse,
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
 import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
@@ -198,6 +198,11 @@ export function UserDetailPage({ userId }: { userId: string }) {
           <p className="font-mono text-xs text-muted-foreground">{p.user_id}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <UserStatusBadge isVerified={p.is_verified} isActive={p.is_active} />
+            <CustomerSegmentBadge
+              segment={p.customer_segment}
+              isNew={p.is_new_customer}
+            />
+            <PresenceIndicator online={p.is_online} lastSeenAt={p.last_seen_at} />
             <CybridLinkStatusBadge linked={linked} />
             {!data.eligibility.can_transfer ? (
               <span className="rounded-md border border-warning/50 bg-warning-muted/30 px-2 py-0.5 text-[10px] font-semibold text-warning">
@@ -277,6 +282,7 @@ export function UserDetailPage({ userId }: { userId: string }) {
           <Row k="Onboarding step" v={p.onboarding_step != null ? String(p.onboarding_step) : "—"} />
           <Row k="Cybrid integration flag" v={String(p.cybrid_integration_completed)} />
           <Row k="Last login" v={p.last_login_at || p.last_login || "—"} />
+          <Row k="Last seen" v={p.last_seen_at || "—"} />
           <Row k="Created" v={p.created_at || "—"} />
         </dl>
       ) : null}

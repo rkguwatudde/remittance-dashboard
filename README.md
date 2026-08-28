@@ -24,7 +24,7 @@ npm run dev:sandbox
 
 | Environment | Branch | Site | API (upstream) |
 |-------------|--------|------|----------------|
-| Production | `main` | `https://remittance.borabond.com` | `https://api.borabond.com` |
+| Production | `main` | `https://remittance.borabond.com` | `https://core-api.borabond.com` |
 | Staging | `dev` | `https://remittance-staging.borabond.com` | `https://staging-api.borabond.com` |
 
 Step-by-step: **[docs/VERCEL_STAGING.md](./docs/VERCEL_STAGING.md)**

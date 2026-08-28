@@ -23,7 +23,7 @@ import {
   type AdminOperationLogRow,
   type AdminUserDirectoryRow,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
 import { UserDetailDrawer } from "./user-detail-drawer";
 import { cn } from "@/lib/utils";
 
@@ -86,13 +86,15 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     setDrawerOpen(true);
   }, []);
 
-  const load = React.useCallback(async () => {
+  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
     if (!token) {
       setErr("Not signed in.");
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) {
+      setLoading(true);
+    }
     setErr(null);
     try {
       const data = await adminUsersList(token, {
@@ -132,6 +134,14 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  React.useEffect(() => {
+    if (!token) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load({ silent: true });
+    }, 20000);
+    return () => window.clearInterval(id);
+  }, [load, token]);
 
   React.useEffect(() => {
     void loadOps();
@@ -385,7 +395,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     }
   }, [token, selectedIds, withdrawMinor, withdrawPlatformWallet, loadOps]);
 
-  const colCount = transferHub ? 8 : 7;
+  const colCount = transferHub ? 9 : 8;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:px-6">
@@ -698,6 +708,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                 </th>
               ) : null}
               <th className="px-4 py-3 font-medium">Name</th>
+              <th className="px-4 py-3 font-medium">Presence</th>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Phone</th>
               <th className="px-4 py-3 font-medium">Verification</th>
@@ -743,6 +754,15 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                 <td className="px-4 py-3">
                   <p className="font-medium text-foreground">{u.full_name || "—"}</p>
                   <p className="font-mono text-[10px] text-muted-foreground">{u.user_id}</p>
+                  <div className="mt-1">
+                    <CustomerSegmentBadge
+                      segment={u.customer_segment}
+                      isNew={u.is_new_customer}
+                    />
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <PresenceIndicator online={u.is_online} lastSeenAt={u.last_seen_at} />
                 </td>
                 <td className="max-w-[160px] truncate px-4 py-3 text-muted-foreground" title={u.email ?? ""}>
                   {u.email || "—"}
@@ -911,6 +931,10 @@ function UsersDirectoryTableSkeleton({
           <td className="px-4 py-3">
             <Skeleton className={cn("h-4 w-full", nameW[i % 5])} />
             <Skeleton className="mt-2 h-3 w-28 max-w-[90%]" />
+            <Skeleton className="mt-2 h-5 w-10 rounded-full" />
+          </td>
+          <td className="px-4 py-3">
+            <Skeleton className="h-3 w-16" />
           </td>
           <td className="max-w-[160px] px-4 py-3">
             <Skeleton className={cn("h-4 w-full", emailW[i % 5])} />

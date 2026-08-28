@@ -33,6 +33,7 @@ import {
 } from "@/lib/remittance-admin-api";
 import { postRemittancePaymentsViaDashboardProxy } from "@/lib/remittance-payments-api";
 import { UserSelector } from "@/features/users/user-selector";
+import { CustomerSegmentBadge, PresenceIndicator } from "@/features/users/user-badges";
 import { SendMoneyOtpDialog } from "./send-money-otp-dialog";
 
 const STEPS = [
@@ -651,6 +652,16 @@ export function SendMoneyFlow() {
                   <p className="text-sm text-muted-foreground">Loading sender profile…</p>
                 ) : userDetail ? (
                   <div className="space-y-2 rounded-xl border border-border bg-surface-muted/30 p-4 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CustomerSegmentBadge
+                        segment={userDetail.profile.customer_segment}
+                        isNew={userDetail.profile.is_new_customer}
+                      />
+                      <PresenceIndicator
+                        online={userDetail.profile.is_online}
+                        lastSeenAt={userDetail.profile.last_seen_at}
+                      />
+                    </div>
                     <p>
                       <span className="text-muted-foreground">Cybrid customer</span>{" "}
                       <span className="font-mono text-foreground">
