@@ -3,7 +3,7 @@
  * Do not use NEXT_PUBLIC_REMITTANCE_API_URL here — that is the browser-relative proxy path.
  */
 const STAGING_UPSTREAM_DEFAULT = "https://staging-api.borabond.com";
-const PRODUCTION_UPSTREAM_DEFAULT = "https://api.borabond.com";
+const PRODUCTION_UPSTREAM_DEFAULT = "https://core-api.borabond.com";
 
 /**
  * Old remittance Nest (:9002) hosts. Cloudflare 522s because that origin is down.

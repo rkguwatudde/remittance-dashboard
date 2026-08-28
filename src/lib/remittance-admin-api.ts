@@ -731,6 +731,78 @@ export async function adminBanksList(accessToken: string) {
   return raw.data.banks;
 }
 
+/** Row from transfer.remittance_fees_config (admin GET/POST/PATCH /exchange-rates). */
+export type AdminRemittanceFeeRow = {
+  id: string;
+  platform: string;
+  transactionType: string;
+  currency: string;
+  providerRate: number;
+  customerRate: number;
+  hasBoughtBond: boolean;
+  borabondFee: number;
+  remittanceFee: number;
+  basisPoints: number;
+  minAmount: number | null;
+  maxAmount: number | null;
+  isActive: boolean;
+  instant: number | null;
+  requestMoneyInstant: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminRemittanceFeeWriteBody = {
+  platform?: string;
+  transaction_type?: string;
+  currency?: string;
+  provider_rate?: number;
+  customer_rate?: number;
+  has_bought_bond?: boolean;
+  min_amount?: number | null;
+  max_amount?: number | null;
+  is_active?: boolean;
+  request_money_instant?: number | null;
+};
+
+export async function adminExchangeRatesList(accessToken: string) {
+  const raw = await request<{ success: boolean; data: { rates: AdminRemittanceFeeRow[] } }>(
+    "/api/v1/admin/transfers/exchange-rates",
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data.rates;
+}
+
+export async function adminCreateExchangeRate(
+  accessToken: string,
+  body: AdminRemittanceFeeWriteBody & { currency: string; provider_rate: number; customer_rate: number },
+) {
+  const raw = await request<{ success: boolean; data: { rate: AdminRemittanceFeeRow } }>(
+    "/api/v1/admin/transfers/exchange-rates",
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.rate;
+}
+
+export async function adminPatchExchangeRate(
+  accessToken: string,
+  id: string,
+  body: AdminRemittanceFeeWriteBody,
+) {
+  const raw = await request<{ success: boolean; data: { rate: AdminRemittanceFeeRow } }>(
+    `/api/v1/admin/transfers/exchange-rates/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.rate;
+}
+
+export async function adminDeleteExchangeRate(accessToken: string, id: string) {
+  await request<{ success: boolean; data: { id: string } }>(
+    `/api/v1/admin/transfers/exchange-rates/${encodeURIComponent(id)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+}
+
 export type AdminSavedRecipientRow = {
   id: string;
   user_id: string;
@@ -1219,6 +1291,10 @@ export type AdminUserDirectoryRow = {
   product_intent?: "send_only" | "send_and_invest" | null;
   account_purpose?: string | null;
   last_login_at: string | null;
+  customer_segment?: "new" | "old" | null;
+  is_new_customer?: boolean | null;
+  is_online?: boolean;
+  last_seen_at?: string | null;
   cybrid_customer_id: string | null;
   cybrid_verification_status: string | null;
   external_bank_accounts_count: number | null;
@@ -1270,6 +1346,10 @@ export type AdminUserDetailResponse = {
     created_at: string | null;
     updated_at: string | null;
     cybrid_integration_completed: boolean | null;
+    customer_segment?: "new" | "old" | null;
+    is_new_customer?: boolean | null;
+    is_online?: boolean;
+    last_seen_at?: string | null;
   };
   cybrid: {
     cybrid_customer_id: string;

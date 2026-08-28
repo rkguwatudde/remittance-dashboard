@@ -55,10 +55,11 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AuditLogDrawer } from "./audit-log-drawer";
+import { ExchangeRatesCard } from "./exchange-rates-card";
 import { ProviderLogsDrawer } from "./provider-logs-drawer";
 import { RemittanceAuditDrawer } from "./remittance-audit-drawer";
 
-const POLL_MS = 8000;
+const POLL_MS = 30000;
 const PAGE = 25;
 const CHART_GRID = "oklch(0.55 0.02 154 / 0.35)";
 
@@ -165,7 +166,10 @@ export function SystemAdminPage() {
     [getAccessToken, refreshAccessToken],
   );
 
+  const overviewInFlight = React.useRef(false);
   const loadOverview = React.useCallback(async () => {
+    if (overviewInFlight.current) return;
+    overviewInFlight.current = true;
     setOvError(null);
     try {
       const data = await withToken((t) => adminSystemOverview(t));
@@ -173,6 +177,7 @@ export function SystemAdminPage() {
     } catch (e) {
       setOvError(e instanceof AdminApiError ? e.message : "Failed to load system overview.");
     } finally {
+      overviewInFlight.current = false;
       setOvLoading(false);
     }
   }, [withToken]);
@@ -917,6 +922,8 @@ export function SystemAdminPage() {
           )}
         </CardContent>
       </Card>
+
+      <ExchangeRatesCard withToken={withToken} isSuper={isSuper} />
 
       {/* Audits */}
       <Card className="overflow-hidden">

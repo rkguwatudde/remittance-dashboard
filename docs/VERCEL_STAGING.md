@@ -9,7 +9,7 @@ Production uses a **same-origin proxy** so the browser does not hit cross-origin
 | Role | Production | Staging (sandbox) |
 |------|------------|-------------------|
 | **Dashboard** (Vercel) | `https://remittance.borabond.com` | `https://remittance-staging.borabond.com` (Preview on `dev`) |
-| **API gateway** | `https://api.borabond.com` | `https://staging-api.borabond.com` |
+| **API gateway** | `https://core-api.borabond.com` | `https://staging-api.borabond.com` |
 
 The API host and the dashboard host are **different** subdomains (like `staging-api` vs `staging-app` for customer-app).
 
@@ -30,7 +30,7 @@ Open **Vercel** → project for **remittance-dashboard** → **Settings** → **
 
 | Variable | Value |
 |----------|--------|
-| `REMITTANCE_API_UPSTREAM` | `https://api.borabond.com` |
+| `REMITTANCE_API_UPSTREAM` | `https://core-api.borabond.com` |
 | `NEXT_PUBLIC_REMITTANCE_API_URL` | `/api/remittance-backend` |
 
 `next.config.ts` no longer uses build-time rewrites. **`src/app/api/remittance-backend/[...path]/route.ts`** proxies at **runtime** using `REMITTANCE_API_UPSTREAM` (server-only env on Vercel).
@@ -114,7 +114,7 @@ You should see JSON like `{ "proxyConfigured": true, "upstreamHost": "staging-ap
 |-------|-----|
 | **Cloudflare 522 / HTML error from `staging-remittance.borabond.com`** | That host is the **retired remittance Nest origin** (`:9002`). It is down. Set Preview `REMITTANCE_API_UPSTREAM` to `https://staging-api.borabond.com` and `NEXT_PUBLIC_REMITTANCE_API_URL` to `/api/remittance-backend`, then redeploy. Do not point the dashboard at `staging-remittance.borabond.com`. |
 | **Vercel Deployment Protection** (SSO on Preview) | **Settings → Deployment Protection → Deployment Protection Exceptions** — add `remittance-staging.borabond.com` so the staging dashboard (and `/api/*`) is publicly reachable. See [Vercel docs](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/deployment-protection-exceptions). |
-| **No admin user on sandbox DB** | Apply staff migration into `identity.staff_accounts`, or bootstrap once: `POST /api/v1/admin/auth/bootstrap` on identity-service (env-gated). Wrong password returns **401**, not 500. |
+| **No admin user on sandbox DB** | Apply staff migration / insert into `identity.staff_accounts`. Public `POST /api/v1/admin/auth/bootstrap` is local-only (disabled in staging/production). Wrong password returns **401**, not 500. |
 | **API crash on valid login** (correct email/password) | Check `api-gateway` then `identity-service` logs. Often JWT secret mismatch (`ADMIN_JWT_SECRET`) or empty `identity.staff_accounts`. |
 
 ### Env checklist (Preview / `dev`)

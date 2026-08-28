@@ -10,7 +10,7 @@ import {
   adminUsersList,
   type AdminUserDirectoryRow,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
 import { cn } from "@/lib/utils";
 
 function isSendMoneyOnly(u: AdminUserDirectoryRow): boolean {
@@ -48,12 +48,14 @@ export function UserSelector({
   const [total, setTotal] = React.useState(0);
   const [open, setOpen] = React.useState(true);
 
-  const runLoad = React.useCallback(async () => {
+  const runLoad = React.useCallback(async (opts?: { silent?: boolean }) => {
     if (!accessToken) {
       onError("Not signed in.");
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) {
+      setLoading(true);
+    }
     try {
       const data = await adminUsersList(accessToken, {
         q: filter.trim() || undefined,
@@ -76,6 +78,14 @@ export function UserSelector({
     const t = setTimeout(() => void runLoad(), 280);
     return () => clearTimeout(t);
   }, [runLoad]);
+
+  React.useEffect(() => {
+    if (!accessToken) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void runLoad({ silent: true });
+    }, 20000);
+    return () => window.clearInterval(id);
+  }, [accessToken, runLoad]);
 
   const canSelect = (u: AdminUserDirectoryRow) => {
     if (!u.is_active) return false;
@@ -145,6 +155,13 @@ export function UserSelector({
               {[selected.email, selected.phone].filter(Boolean).join(" · ") || "—"}
             </p>
             <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{selected.user_id}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <CustomerSegmentBadge
+                segment={selected.customer_segment}
+                isNew={selected.is_new_customer}
+              />
+              <PresenceIndicator online={selected.is_online} lastSeenAt={selected.last_seen_at} />
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">{onboardingLabel(selected)}</p>
             {purpose !== "send-money" && !selected.cybrid_linked ? (
               <p className="mt-1 text-xs text-danger">User not linked to Cybrid — transfers disabled.</p>
@@ -185,6 +202,7 @@ export function UserSelector({
             <thead className="sticky top-0 z-10 bg-surface-muted/95 text-xs text-muted-foreground backdrop-blur">
               <tr className="border-b border-border">
                 <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Presence</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Phone</th>
                 <th className="px-4 py-3 font-medium">User ID</th>
@@ -215,6 +233,15 @@ export function UserSelector({
                   >
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <p className="font-medium text-foreground">{u.full_name || "—"}</p>
+                      <div className="mt-1">
+                        <CustomerSegmentBadge
+                          segment={u.customer_segment}
+                          isNew={u.is_new_customer}
+                        />
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <PresenceIndicator online={u.is_online} lastSeenAt={u.last_seen_at} />
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground" title={u.email ?? ""}>
                       <span className="block max-w-[280px] truncate">{u.email || "—"}</span>
@@ -276,7 +303,7 @@ export function UserSelector({
               })}
               {rows.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-16 text-center text-muted-foreground">
                     No users match. Adjust search or open Users for the full directory.
                   </td>
                 </tr>

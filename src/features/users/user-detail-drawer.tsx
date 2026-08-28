@@ -17,7 +17,7 @@ import {
   adminUserDetail,
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, UserStatusBadge } from "./user-badges";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
 import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
@@ -218,6 +218,11 @@ export function UserDetailDrawer({
               <>
                 <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
                   <UserStatusBadge isVerified={p.is_verified} isActive={p.is_active} />
+                  <CustomerSegmentBadge
+                    segment={p.customer_segment}
+                    isNew={p.is_new_customer}
+                  />
+                  <PresenceIndicator online={p.is_online} lastSeenAt={p.last_seen_at} />
                   <CybridLinkStatusBadge linked={linked} />
                   {data.eligibility.can_transfer ? (
                     <Badge variant="success" className="text-[10px]">
@@ -293,6 +298,10 @@ export function UserDetailDrawer({
                       <DetailItem
                         label="Last login"
                         value={formatSafe(p.last_login_at || p.last_login)}
+                      />
+                      <DetailItem
+                        label="Last seen"
+                        value={formatSafe(p.last_seen_at)}
                       />
                       <DetailItem label="Created" value={formatSafe(p.created_at)} />
                     </dl>
