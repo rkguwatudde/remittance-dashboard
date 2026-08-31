@@ -237,12 +237,53 @@ export type AdminTeamMember = {
   is_active?: boolean;
   mustResetPassword?: boolean;
   must_reset_password?: boolean;
+  is_locked?: boolean;
+  locked_until?: string | null;
+  is_online?: boolean;
+  last_login_at?: string | null;
+  last_seen_at?: string | null;
+  last_login_ip?: string | null;
+  last_login_user_agent?: string | null;
+  last_seen_ip?: string | null;
+  last_seen_user_agent?: string | null;
+  active_refresh_sessions?: number;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
   updated_at?: string;
   createdByAdminId?: string | null;
   created_by_admin_id?: string | null;
+  created_by_staff_id?: string | null;
+};
+
+export type AdminStaffActivityRow = {
+  id: string;
+  created_at: string | null;
+  staff_id: string | null;
+  staff_email: string | null;
+  action: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata_preview: string | null;
+};
+
+export type AdminStaffMonitorSummary = {
+  total: number;
+  active: number;
+  disabled: number;
+  locked: number;
+  online: number;
+  offline: number;
+  never_signed_in: number;
+  must_reset_password: number;
+};
+
+export type AdminStaffMonitorResponse = {
+  generated_at: string;
+  online_threshold_seconds: number;
+  summary: AdminStaffMonitorSummary;
+  admins: AdminTeamMember[];
+  recent_activity: AdminStaffActivityRow[];
 };
 
 export const ADMIN_CREATE_ROLES = [
@@ -258,6 +299,33 @@ export async function adminListTeam(accessToken: string) {
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data.admins;
+}
+
+export async function adminStaffMonitor(accessToken: string) {
+  const raw = await request<{ success: boolean; data: AdminStaffMonitorResponse }>(
+    "/api/v1/admin/staff/monitor",
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminStaffHeartbeat(accessToken: string) {
+  return request<{ success: boolean; data: { last_seen_at: string | null } }>(
+    "/api/v1/admin/auth/heartbeat",
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+}
+
+export async function adminRevokeStaffSessions(accessToken: string, staffId: string) {
+  const raw = await request<{
+    success: boolean;
+    message: string;
+    data: { staff_id: string; email: string };
+  }>(`/api/v1/admin/staff/${encodeURIComponent(staffId)}/revoke-sessions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return raw;
 }
 
 export async function adminCreateTeamMember(

@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { format } from "date-fns";
-import { Loader2, Mail, RefreshCw, UserPlus } from "lucide-react";
+import { Loader2, Mail, Radio, RefreshCw, UserPlus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,8 @@ import {
   type AdminTeamMember,
 } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
+import { PresenceIndicator } from "@/features/users/user-badges";
+import { formatRelativeTime } from "@/features/admins/staff-monitor-format";
 
 function memberIsActive(m: AdminTeamMember): boolean {
   return m.isActive ?? m.is_active ?? false;
@@ -141,7 +144,14 @@ export function AdminTeamSettings() {
           <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-foreground">{activeCount}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">Can sign in</p>
         </div>
-        <div className="flex items-center justify-end sm:col-span-1">
+        <div className="flex items-center justify-end gap-2 sm:col-span-1">
+          <Link
+            href="/admins"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-surface-muted"
+          >
+            <Radio className="size-3.5 text-success" />
+            Live ops
+          </Link>
           <Button type="button" variant="secondary" size="sm" className="gap-2" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             Refresh list
@@ -249,11 +259,13 @@ export function AdminTeamSettings() {
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border shadow-[var(--shadow-card)]">
               <div className="max-h-[min(520px,55vh)] overflow-x-auto overflow-y-auto">
-                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[860px] border-collapse text-left text-sm">
                   <thead className="sticky top-0 z-[1] bg-surface-muted/95 backdrop-blur-sm">
                     <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       <th className="px-4 py-3">Member</th>
                       <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3">Presence</th>
+                      <th className="px-4 py-3">Last login</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="hidden px-4 py-3 md:table-cell">Onboarding</th>
                       <th className="hidden px-4 py-3 sm:table-cell">Joined</th>
@@ -292,6 +304,12 @@ export function AdminTeamSettings() {
                             <Badge variant="secondary" className="text-[10px] font-medium">
                               {roleLabel(a.role)}
                             </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <PresenceIndicator online={a.is_online} lastSeenAt={a.last_seen_at} />
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground" title={a.last_login_at ?? undefined}>
+                            {formatRelativeTime(a.last_login_at)}
                           </td>
                           <td className="px-4 py-3">
                             <span

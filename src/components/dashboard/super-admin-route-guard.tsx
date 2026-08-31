@@ -16,6 +16,7 @@ const SUPER_ADMIN_ONLY_PATHS = new Set([
   "/notifications",
   "/recipients",
   "/bank-delete-requests",
+  "/admins",
 ]);
 
 function isSuperAdminOnlyPath(pathname: string): boolean {
@@ -24,7 +25,8 @@ function isSuperAdminOnlyPath(pathname: string): boolean {
     pathname.startsWith("/transfer/") ||
     pathname.startsWith("/notifications/") ||
     pathname.startsWith("/recipients/") ||
-    pathname.startsWith("/bank-delete-requests/")
+    pathname.startsWith("/bank-delete-requests/") ||
+    pathname.startsWith("/admins/")
   );
 }
 

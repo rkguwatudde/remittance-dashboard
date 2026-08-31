@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   adminLogout,
   adminRefresh,
+  adminStaffHeartbeat,
   type AdminVerifyOtpResponse,
 } from "@/lib/remittance-admin-api";
 
@@ -133,6 +134,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [refreshAccessToken]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const ping = async () => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      const token = getAccessToken();
+      if (!token) return;
+      try {
+        await adminStaffHeartbeat(token);
+      } catch {
+        /* presence is best-effort */
+      }
+    };
+    void ping();
+    const id = window.setInterval(() => void ping(), 25_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void ping();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [user, getAccessToken]);
 
   const completeSignIn = React.useCallback((result: AdminVerifyOtpResponse) => {
     const accessExpiresAt = Date.now() + result.expires_in * 1000;

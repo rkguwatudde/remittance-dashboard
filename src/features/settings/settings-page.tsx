@@ -19,6 +19,7 @@ import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import { AC_EXISTING, AC_NEW } from "@/lib/form-autocomplete";
 import { adminChangePassword, AdminApiError } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
+import { useSearchParams } from "next/navigation";
 
 import { AdminTeamSettings } from "./admin-team-settings";
 import { SettingsSection } from "./settings-section";
@@ -39,6 +40,13 @@ export function SettingsPage() {
   const isSuperAdmin = useIsSuperAdmin();
 
   const [activeTab, setActiveTab] = React.useState<SettingsTabId>("security");
+  const searchParams = useSearchParams();
+
+  React.useEffect(() => {
+    if (searchParams.get("tab") === "team" && isSuperAdmin) {
+      setActiveTab("team");
+    }
+  }, [searchParams, isSuperAdmin]);
 
   const [existingSignIn, setExistingSignIn] = React.useState("");
   const [newSignInSecret, setNewSignInSecret] = React.useState("");
@@ -307,7 +315,7 @@ export function SettingsPage() {
                 id="team-panel-inner"
                 icon={Users}
                 title="Team & access"
-                description="Invite dashboard admins by email. They receive a temporary password and must reset it on first sign-in."
+                description="Invite dashboard admins by email. Open Admins in the sidebar for live presence, last login, and force sign-out."
               >
                 <AdminTeamSettings />
               </SettingsSection>
