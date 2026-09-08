@@ -33,7 +33,7 @@ import {
 } from "@/lib/remittance-admin-api";
 import { postRemittancePaymentsViaDashboardProxy } from "@/lib/remittance-payments-api";
 import { UserSelector } from "@/features/users/user-selector";
-import { CustomerSegmentBadge, PresenceIndicator } from "@/features/users/user-badges";
+import { CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge } from "@/features/users/user-badges";
 import { SendMoneyOtpDialog } from "./send-money-otp-dialog";
 
 const STEPS = [
@@ -661,6 +661,11 @@ export function SendMoneyFlow() {
                         online={userDetail.profile.is_online}
                         lastSeenAt={userDetail.profile.last_seen_at}
                       />
+                      <DeviceBadge
+                        device={userDetail.profile.device}
+                        userAgent={userDetail.profile.device_user_agent}
+                      />
+                      <ProductBadge user={userDetail.profile} />
                     </div>
                     <p>
                       <span className="text-muted-foreground">Cybrid customer</span>{" "}

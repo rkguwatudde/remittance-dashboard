@@ -69,7 +69,7 @@ export default function DashboardGroupLayout({
       />
       <div className="md:pl-60">
         <AppTopbar onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="px-4 py-6 md:px-6 md:py-8 lg:px-8">
+        <main className="px-4 py-4 md:px-6 md:py-5">
           <SuperAdminRouteGuard>{children}</SuperAdminRouteGuard>
         </main>
       </div>

@@ -11,11 +11,13 @@ import {
   adminPullFundsBankAccounts,
   adminPullFundsExecute,
   adminUserDetail,
+  isCustomerAccountLocked,
   type AdminPullFundsBankAccount,
   type AdminPullFundsExecuteResponse,
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
+import { AccountLockControls } from "./account-lock-controls";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge, UserStatusBadge } from "./user-badges";
 import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
@@ -56,28 +58,29 @@ export function UserDetailPage({ userId }: { userId: string }) {
   const customerGuidRef = React.useRef<string>("");
   const idempotencyKeyRef = React.useRef<string>("");
 
-  React.useEffect(() => {
-    if (!token || !userId) return;
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setErr(null);
+  const loadUser = React.useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!token || !userId) return;
+      if (!opts?.silent) setLoading(true);
+      if (!opts?.silent) setErr(null);
       try {
         const d = await adminUserDetail(token, userId);
-        if (!cancelled) setData(d);
+        setData(d);
+        setErr(null);
       } catch (e) {
-        if (!cancelled) {
-          setErr(e instanceof AdminApiError ? e.message : "Failed to load user.");
-          setData(null);
-        }
+        if (opts?.silent) return;
+        setErr(e instanceof AdminApiError ? e.message : "Failed to load user.");
+        setData(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!opts?.silent) setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, userId]);
+    },
+    [token, userId],
+  );
+
+  React.useEffect(() => {
+    void loadUser();
+  }, [loadUser]);
 
   if (loading) {
     return (
@@ -197,12 +200,18 @@ export function UserDetailPage({ userId }: { userId: string }) {
           <h1 className="text-2xl font-bold text-foreground">{p.full_name || "User"}</h1>
           <p className="font-mono text-xs text-muted-foreground">{p.user_id}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <UserStatusBadge isVerified={p.is_verified} isActive={p.is_active} />
+            <UserStatusBadge
+              isVerified={p.is_verified}
+              isActive={p.is_active}
+              isLocked={isCustomerAccountLocked(p)}
+            />
             <CustomerSegmentBadge
               segment={p.customer_segment}
               isNew={p.is_new_customer}
             />
             <PresenceIndicator online={p.is_online} lastSeenAt={p.last_seen_at} />
+            <DeviceBadge device={p.device} userAgent={p.device_user_agent} />
+            <ProductBadge user={p} />
             <CybridLinkStatusBadge linked={linked} />
             {!data.eligibility.can_transfer ? (
               <span className="rounded-md border border-warning/50 bg-warning-muted/30 px-2 py-0.5 text-[10px] font-semibold text-warning">
@@ -215,7 +224,12 @@ export function UserDetailPage({ userId }: { userId: string }) {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <AccountLockControls
+            userId={userId}
+            lock={p}
+            onChanged={() => void loadUser({ silent: true })}
+          />
           {canPullFunds ? (
             <Button
               type="button"
@@ -278,11 +292,32 @@ export function UserDetailPage({ userId }: { userId: string }) {
           <Row k="Email" v={p.email} />
           <Row k="Phone" v={p.phone} />
           <Row k="Verification status" v={p.verification_status} />
+          <Row k="Account status" v={p.account_status || (isCustomerAccountLocked(p) ? "LOCKED" : "—")} />
+          <Row
+            k="Locked at"
+            v={p.locked_at ? p.locked_at.slice(0, 19).replace("T", " ") : "—"}
+          />
+          <Row
+            k="Failed login attempts"
+            v={p.failed_login_attempts != null ? String(p.failed_login_attempts) : "—"}
+          />
           <Row k="Onboarding completed" v={String(p.onboarding_completed)} />
           <Row k="Onboarding step" v={p.onboarding_step != null ? String(p.onboarding_step) : "—"} />
           <Row k="Cybrid integration flag" v={String(p.cybrid_integration_completed)} />
           <Row k="Last login" v={p.last_login_at || p.last_login || "—"} />
           <Row k="Last seen" v={p.last_seen_at || "—"} />
+          <Row
+            k="Device"
+            v={
+              p.device === "ios"
+                ? "iOS"
+                : p.device === "android"
+                  ? "Android"
+                  : p.device === "web"
+                    ? "Web"
+                    : p.device_user_agent || "Unknown"
+            }
+          />
           <Row k="Created" v={p.created_at || "—"} />
         </dl>
       ) : null}

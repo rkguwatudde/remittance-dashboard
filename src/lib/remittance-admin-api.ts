@@ -1345,8 +1345,20 @@ export async function adminRemittanceAuditLogs(
   return raw.data;
 }
 
+export type AdminAccountLockFields = {
+  account_status?: string | null;
+  is_locked?: boolean;
+  locked_at?: string | null;
+  failed_login_attempts?: number;
+};
+
+export function isCustomerAccountLocked(u: AdminAccountLockFields | null | undefined): boolean {
+  if (!u) return false;
+  return u.is_locked === true || u.account_status === "LOCKED";
+}
+
 /** user_profiles + LEFT JOIN cybrid_customers (admin directory) */
-export type AdminUserDirectoryRow = {
+export type AdminUserDirectoryRow = AdminAccountLockFields & {
   user_id: string;
   full_name: string | null;
   email: string | null;
@@ -1363,6 +1375,8 @@ export type AdminUserDirectoryRow = {
   is_new_customer?: boolean | null;
   is_online?: boolean;
   last_seen_at?: string | null;
+  device?: "ios" | "android" | "web" | "unknown";
+  device_user_agent?: string | null;
   cybrid_customer_id: string | null;
   cybrid_verification_status: string | null;
   external_bank_accounts_count: number | null;
@@ -1379,6 +1393,7 @@ export async function adminUsersList(
     offset?: number;
     verified?: boolean;
     active?: boolean;
+    online?: boolean;
     cybrid?: "linked" | "not_linked";
   },
 ) {
@@ -1396,7 +1411,7 @@ export async function adminUsersList(
 }
 
 export type AdminUserDetailResponse = {
-  profile: {
+  profile: AdminAccountLockFields & {
     user_id: string;
     full_name: string | null;
     email: string | null;
@@ -1418,6 +1433,8 @@ export type AdminUserDetailResponse = {
     is_new_customer?: boolean | null;
     is_online?: boolean;
     last_seen_at?: string | null;
+    device?: "ios" | "android" | "web" | "unknown";
+    device_user_agent?: string | null;
   };
   cybrid: {
     cybrid_customer_id: string;
@@ -1435,6 +1452,22 @@ export async function adminUserDetail(accessToken: string, userId: string) {
   const raw = await request<{ success: boolean; data: AdminUserDetailResponse }>(
     `/api/v1/admin/users/${encodeURIComponent(userId)}`,
     { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminUserUnlock(accessToken: string, userId: string) {
+  const raw = await request<{ success: boolean; data: unknown }>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/unlock`,
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminUserLock(accessToken: string, userId: string) {
+  const raw = await request<{ success: boolean; data: unknown }>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/lock`,
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } },
   );
   return raw.data;
 }

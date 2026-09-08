@@ -8,24 +8,14 @@ import { Button } from "@/components/ui/button";
 import {
   AdminApiError,
   adminUsersList,
+  isCustomerAccountLocked,
   type AdminUserDirectoryRow,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
+import { CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge, UserStatusBadge } from "./user-badges";
 import { cn } from "@/lib/utils";
 
 function isSendMoneyOnly(u: AdminUserDirectoryRow): boolean {
   return u.product_intent === "send_only" || u.account_purpose === "SEND_MONEY_ONLY";
-}
-
-function onboardingLabel(u: AdminUserDirectoryRow): string {
-  if (u.product_intent === "send_only" || u.account_purpose === "SEND_MONEY_ONLY") {
-    return "Send money only";
-  }
-  if (u.onboarding_required === false) {
-    return "Not required";
-  }
-  if (u.onboarding_completed === null) return "—";
-  return u.onboarding_completed ? "Done" : "Incomplete";
 }
 
 export function UserSelector({
@@ -161,8 +151,9 @@ export function UserSelector({
                 isNew={selected.is_new_customer}
               />
               <PresenceIndicator online={selected.is_online} lastSeenAt={selected.last_seen_at} />
+              <DeviceBadge device={selected.device} userAgent={selected.device_user_agent} />
+              <ProductBadge user={selected} />
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{onboardingLabel(selected)}</p>
             {purpose !== "send-money" && !selected.cybrid_linked ? (
               <p className="mt-1 text-xs text-danger">User not linked to Cybrid — transfers disabled.</p>
             ) : null}
@@ -203,12 +194,12 @@ export function UserSelector({
               <tr className="border-b border-border">
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Presence</th>
+                <th className="px-4 py-3 font-medium">Device</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Phone</th>
                 <th className="px-4 py-3 font-medium">User ID</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Cybrid</th>
-                <th className="px-4 py-3 font-medium">Purpose</th>
+                <th className="px-4 py-3 font-medium">Product</th>
                 <th className="sticky right-0 bg-surface-muted/95 px-4 py-3 text-right font-medium">
                   Action
                 </th>
@@ -243,6 +234,9 @@ export function UserSelector({
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <PresenceIndicator online={u.is_online} lastSeenAt={u.last_seen_at} />
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <DeviceBadge device={u.device} userAgent={u.device_user_agent} />
+                    </td>
                     <td className="px-4 py-3.5 text-muted-foreground" title={u.email ?? ""}>
                       <span className="block max-w-[280px] truncate">{u.email || "—"}</span>
                     </td>
@@ -255,16 +249,17 @@ export function UserSelector({
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
-                      <UserStatusBadge isVerified={u.is_verified} isActive={u.is_active} />
+                      <UserStatusBadge
+                        isVerified={u.is_verified}
+                        isActive={u.is_active}
+                        isLocked={isCustomerAccountLocked(u)}
+                      />
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         KYC: {u.verification_status || "—"}
                       </p>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <CybridLinkStatusBadge linked={u.cybrid_linked} />
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">
-                      {onboardingLabel(u)}
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <ProductBadge user={u} />
                     </td>
                     <td
                       className={cn(

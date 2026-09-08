@@ -15,9 +15,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   AdminApiError,
   adminUserDetail,
+  isCustomerAccountLocked,
   type AdminUserDetailResponse,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
+import { AccountLockControls } from "./account-lock-controls";
+import { CybridLinkStatusBadge, CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge, UserStatusBadge } from "./user-badges";
 import { CustomerFundingControlsPanels } from "./customer-funding-controls-panels";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +63,7 @@ type UserDetailDrawerProps = {
   userId: string | null;
   onClose: () => void;
   onFullyClosed?: () => void;
+  onUserUpdated?: () => void;
 };
 
 export function UserDetailDrawer({
@@ -68,6 +71,7 @@ export function UserDetailDrawer({
   userId,
   onClose,
   onFullyClosed,
+  onUserUpdated,
 }: UserDetailDrawerProps) {
   const { getAccessToken, user } = useAuth();
   const isSuperAdmin = useIsSuperAdmin();
@@ -217,12 +221,18 @@ export function UserDetailDrawer({
             ) : data && p ? (
               <>
                 <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
-                  <UserStatusBadge isVerified={p.is_verified} isActive={p.is_active} />
+                  <UserStatusBadge
+                    isVerified={p.is_verified}
+                    isActive={p.is_active}
+                    isLocked={isCustomerAccountLocked(p)}
+                  />
                   <CustomerSegmentBadge
                     segment={p.customer_segment}
                     isNew={p.is_new_customer}
                   />
                   <PresenceIndicator online={p.is_online} lastSeenAt={p.last_seen_at} />
+                  <DeviceBadge device={p.device} userAgent={p.device_user_agent} />
+                  <ProductBadge user={p} />
                   <CybridLinkStatusBadge linked={linked} />
                   {data.eligibility.can_transfer ? (
                     <Badge variant="success" className="text-[10px]">
@@ -284,6 +294,19 @@ export function UserDetailDrawer({
                       <DetailItem label="Phone" value={p.phone} />
                       <DetailItem label="Verification status" value={p.verification_status} />
                       <DetailItem
+                        label="Account status"
+                        value={p.account_status || (isCustomerAccountLocked(p) ? "LOCKED" : "—")}
+                      />
+                      <DetailItem label="Locked at" value={formatSafe(p.locked_at)} />
+                      <DetailItem
+                        label="Failed login attempts"
+                        value={
+                          p.failed_login_attempts != null
+                            ? String(p.failed_login_attempts)
+                            : "—"
+                        }
+                      />
+                      <DetailItem
                         label="Onboarding completed"
                         value={String(p.onboarding_completed)}
                       />
@@ -302,6 +325,12 @@ export function UserDetailDrawer({
                       <DetailItem
                         label="Last seen"
                         value={formatSafe(p.last_seen_at)}
+                      />
+                      <DetailItem
+                        label="Device"
+                        value={
+                          <DeviceBadge device={p.device} userAgent={p.device_user_agent} />
+                        }
                       />
                       <DetailItem label="Created" value={formatSafe(p.created_at)} />
                     </dl>
@@ -351,7 +380,26 @@ export function UserDetailDrawer({
                 </div>
 
                 <div className="border-t border-border bg-surface-muted/40 px-5 py-4">
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    {displayUserId ? (
+                      <AccountLockControls
+                        userId={displayUserId}
+                        lock={p}
+                        size="sm"
+                        onChanged={() => {
+                          if (!token || !displayUserId) return;
+                          void (async () => {
+                            try {
+                              const d = await adminUserDetail(token, displayUserId);
+                              setData(d);
+                              onUserUpdated?.();
+                            } catch {
+                              onUserUpdated?.();
+                            }
+                          })();
+                        }}
+                      />
+                    ) : null}
                     {canPullFunds && displayUserId ? (
                       <Link
                         href={`/users/${encodeURIComponent(displayUserId)}`}

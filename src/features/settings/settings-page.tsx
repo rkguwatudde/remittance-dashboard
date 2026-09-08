@@ -43,7 +43,7 @@ export function SettingsPage() {
   const searchParams = useSearchParams();
 
   React.useEffect(() => {
-    if (searchParams.get("tab") === "team" && isSuperAdmin) {
+    if (searchParams?.get("tab") === "team" && isSuperAdmin) {
       setActiveTab("team");
     }
   }, [searchParams, isSuperAdmin]);

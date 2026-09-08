@@ -22,8 +22,9 @@ import {
   type AdminWithdrawPlatformWallet,
   type AdminOperationLogRow,
   type AdminUserDirectoryRow,
+  isCustomerAccountLocked,
 } from "@/lib/remittance-admin-api";
-import { CybridLinkStatusBadge, CustomerSegmentBadge, PresenceIndicator, UserStatusBadge } from "./user-badges";
+import { CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge, UserStatusBadge } from "./user-badges";
 import { UserDetailDrawer } from "./user-detail-drawer";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +47,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
 
   const [verified, setVerified] = React.useState<boolean | undefined>(undefined);
   const [active, setActive] = React.useState<boolean | undefined>(undefined);
-  const [cybrid, setCybrid] = React.useState<"linked" | "not_linked" | undefined>(undefined);
+  const [online, setOnline] = React.useState<boolean | undefined>(undefined);
   const [offset, setOffset] = React.useState(0);
   const limit = 50;
   const [rows, setRows] = React.useState<AdminUserDirectoryRow[]>([]);
@@ -103,7 +104,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
         offset,
         verified,
         active,
-        cybrid,
+        online,
       });
       setRows(data.users);
       setTotal(data.pagination.total);
@@ -114,7 +115,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     } finally {
       setLoading(false);
     }
-  }, [token, debouncedQ, offset, verified, active, cybrid]);
+  }, [token, debouncedQ, offset, verified, active, online]);
 
   const loadOps = React.useCallback(async () => {
     if (!token || !transferHub) return;
@@ -149,7 +150,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
 
   React.useEffect(() => {
     setOffset(0);
-  }, [debouncedQ, verified, active, cybrid]);
+  }, [debouncedQ, verified, active, online]);
 
   React.useEffect(() => {
     if (!transferHub) setSelected(new Set());
@@ -157,7 +158,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
 
   React.useEffect(() => {
     if (transferHub) setSelected(new Set());
-  }, [transferHub, debouncedQ, verified, active, cybrid]);
+  }, [transferHub, debouncedQ, verified, active, online]);
 
   const toggleOne = React.useCallback((userId: string, on: boolean) => {
     setSelected((prev) => {
@@ -395,22 +396,54 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
     }
   }, [token, selectedIds, withdrawMinor, withdrawPlatformWallet, loadOps]);
 
-  const colCount = transferHub ? 9 : 8;
+  const colCount = transferHub ? 10 : 9;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:px-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-          {transferHub ? "Transfer" : "Directory"}
-        </p>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {transferHub ? "Transfers" : "Users"}
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          {transferHub
-            ? "Select users, then run Book transfer (BoraPay → platform), Trade, or Withdraw independently. Book uses quote + transfer on the server."
-            : "user_profiles is the source of truth. Cybrid linkage is shown for integration status."}
-        </p>
+    <div className="space-y-4">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            {transferHub ? "Transfers" : "Users"}
+          </h1>
+          <p className="mt-0.5 max-w-3xl text-sm text-muted-foreground">
+            {transferHub
+              ? "Select users, then run Book transfer (BoraPay → platform), Trade, or Withdraw independently."
+              : "Who is on the app, on which device, and whether they send only or also invest."}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="hidden text-xs text-muted-foreground sm:inline-flex min-h-[1rem] items-center">
+            {loading ? (
+              <Skeleton className="h-3 w-36" shimmer />
+            ) : total > 0 ? (
+              <>
+                {offset + 1}–{Math.min(offset + rows.length, total)} of {total}
+              </>
+            ) : (
+              "No results"
+            )}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={offset === 0 || loading}
+              onClick={() => setOffset((o) => Math.max(0, o - limit))}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={offset + rows.length >= total || loading}
+              onClick={() => setOffset((o) => o + limit)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </header>
 
       {transferHub ? (
@@ -648,7 +681,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 shadow-card">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-3 py-3 shadow-card sm:px-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="min-w-[200px] flex-1">
             <label className="text-xs font-medium text-muted-foreground">Search</label>
@@ -661,21 +694,13 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
           </div>
           <FilterToggle label="Verified" value={verified} onChange={setVerified} />
           <FilterToggle label="Active" value={active} onChange={setActive} />
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Cybrid</label>
-            <select
-              className="mt-1 flex h-9 w-full rounded-lg border border-border bg-surface px-2 text-sm"
-              value={cybrid ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                setCybrid(v === "" ? undefined : (v as "linked" | "not_linked"));
-              }}
-            >
-              <option value="">Any</option>
-              <option value="linked">Linked</option>
-              <option value="not_linked">Not linked</option>
-            </select>
-          </div>
+          <FilterToggle
+            label="Presence"
+            value={online}
+            onChange={setOnline}
+            yesLabel="Online"
+            noLabel="Offline"
+          />
           <Button type="button" variant="secondary" size="sm" onClick={() => void load()}>
             {loading ? "Loading…" : "Apply"}
           </Button>
@@ -694,7 +719,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
           <thead className="border-b border-border bg-surface-muted/80 text-xs text-muted-foreground">
             <tr>
               {transferHub ? (
-                <th className="w-10 px-2 py-3">
+                <th className="w-10 px-2 py-2">
                   <input
                     type="checkbox"
                     className="size-4 rounded border-border"
@@ -707,14 +732,15 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                   />
                 </th>
               ) : null}
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Presence</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Phone</th>
-              <th className="px-4 py-3 font-medium">Verification</th>
-              <th className="px-4 py-3 font-medium">Cybrid</th>
-              <th className="px-4 py-3 font-medium">Last login</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
+              <th className="px-3 py-2 font-medium">Name</th>
+              <th className="px-3 py-2 font-medium">Presence</th>
+              <th className="px-3 py-2 font-medium">Device</th>
+              <th className="px-3 py-2 font-medium">Email</th>
+              <th className="px-3 py-2 font-medium">Phone</th>
+              <th className="px-3 py-2 font-medium">Verification</th>
+              <th className="px-3 py-2 font-medium">Product</th>
+              <th className="px-3 py-2 font-medium">Last login</th>
+              <th className="px-3 py-2 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -738,7 +764,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
               >
                 {transferHub ? (
                   <td
-                    className="px-2 py-3"
+                    className="px-2 py-2 align-middle"
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
@@ -751,34 +777,48 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
                     />
                   </td>
                 ) : null}
-                <td className="px-4 py-3">
-                  <p className="font-medium text-foreground">{u.full_name || "—"}</p>
-                  <p className="font-mono text-[10px] text-muted-foreground">{u.user_id}</p>
-                  <div className="mt-1">
+                <td className="max-w-[220px] px-3 py-2 align-middle">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <p className="truncate font-medium leading-5 text-foreground">
+                      {u.full_name || "—"}
+                    </p>
                     <CustomerSegmentBadge
                       segment={u.customer_segment}
                       isNew={u.is_new_customer}
                     />
                   </div>
+                  <p
+                    className="mt-0.5 max-w-[11rem] truncate font-mono text-[10px] leading-4 text-muted-foreground"
+                    title={u.user_id}
+                  >
+                    {u.user_id}
+                  </p>
                 </td>
-                <td className="px-4 py-3">
+                <td className="whitespace-nowrap px-3 py-2 align-middle">
                   <PresenceIndicator online={u.is_online} lastSeenAt={u.last_seen_at} />
                 </td>
-                <td className="max-w-[160px] truncate px-4 py-3 text-muted-foreground" title={u.email ?? ""}>
+                <td className="whitespace-nowrap px-3 py-2 align-middle">
+                  <DeviceBadge device={u.device} userAgent={u.device_user_agent} />
+                </td>
+                <td className="max-w-[160px] truncate px-3 py-2 align-middle text-muted-foreground" title={u.email ?? ""}>
                   {u.email || "—"}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{u.phone || "—"}</td>
-                <td className="px-4 py-3">
-                  <UserStatusBadge isVerified={u.is_verified} isActive={u.is_active} />
+                <td className="whitespace-nowrap px-3 py-2 align-middle text-muted-foreground">{u.phone || "—"}</td>
+                <td className="whitespace-nowrap px-3 py-2 align-middle">
+                  <UserStatusBadge
+                    isVerified={u.is_verified}
+                    isActive={u.is_active}
+                    isLocked={isCustomerAccountLocked(u)}
+                  />
                 </td>
-                <td className="px-4 py-3">
-                  <CybridLinkStatusBadge linked={u.cybrid_linked} />
+                <td className="whitespace-nowrap px-3 py-2 align-middle">
+                  <ProductBadge user={u} />
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                <td className="whitespace-nowrap px-3 py-2 align-middle font-mono text-xs text-muted-foreground">
                   {u.last_login_at ? u.last_login_at.slice(0, 16).replace("T", " ") : "—"}
                 </td>
                 <td
-                  className="px-4 py-3 text-right"
+                  className="px-3 py-2 text-right align-middle"
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
@@ -904,6 +944,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
         userId={detailUserId}
         onClose={() => setDrawerOpen(false)}
         onFullyClosed={() => setDetailUserId(null)}
+        onUserUpdated={() => void load({ silent: true })}
       />
     </div>
   );
@@ -924,34 +965,36 @@ function UsersDirectoryTableSkeleton({
       {Array.from({ length: rowCount }, (_, i) => (
         <tr key={i} className="border-b border-border/80 last:border-0">
           {transferHub ? (
-            <td className="px-2 py-3 align-middle">
+            <td className="px-2 py-2 align-middle">
               <Skeleton className="size-4 rounded" shimmer={i % 2 === 0} />
             </td>
           ) : null}
-          <td className="px-4 py-3">
+          <td className="max-w-[220px] px-3 py-2 align-middle">
             <Skeleton className={cn("h-4 w-full", nameW[i % 5])} />
-            <Skeleton className="mt-2 h-3 w-28 max-w-[90%]" />
-            <Skeleton className="mt-2 h-5 w-10 rounded-full" />
+            <Skeleton className="mt-1 h-3 w-24 max-w-[90%]" />
           </td>
-          <td className="px-4 py-3">
+          <td className="px-3 py-2 align-middle">
             <Skeleton className="h-3 w-16" />
           </td>
-          <td className="max-w-[160px] px-4 py-3">
+          <td className="px-3 py-2 align-middle">
+            <Skeleton className="h-5 w-12 rounded-md" />
+          </td>
+          <td className="max-w-[160px] px-3 py-2 align-middle">
             <Skeleton className={cn("h-4 w-full", emailW[i % 5])} />
           </td>
-          <td className="px-4 py-3">
+          <td className="px-3 py-2 align-middle">
             <Skeleton className="h-4 w-24" />
           </td>
-          <td className="px-4 py-3">
-            <Skeleton className="h-6 w-[4.5rem] rounded-full" />
+          <td className="px-3 py-2 align-middle">
+            <Skeleton className="h-5 w-[8.5rem] rounded-full" />
           </td>
-          <td className="px-4 py-3">
-            <Skeleton className="h-6 w-14 rounded-full" />
+          <td className="px-3 py-2 align-middle">
+            <Skeleton className="h-5 w-[5.5rem] rounded-md" />
           </td>
-          <td className="px-4 py-3">
+          <td className="px-3 py-2 align-middle">
             <Skeleton className="h-3 w-28" />
           </td>
-          <td className="px-4 py-3 text-right">
+          <td className="px-3 py-2 text-right align-middle">
             <div className="flex justify-end gap-2">
               <Skeleton className="h-8 w-14 shrink-0 rounded-md" />
               <Skeleton className="h-8 w-[5.25rem] shrink-0 rounded-md" />
@@ -993,10 +1036,14 @@ function FilterToggle({
   label,
   value,
   onChange,
+  yesLabel = "Yes",
+  noLabel = "No",
 }: {
   label: string;
   value: boolean | undefined;
   onChange: (v: boolean | undefined) => void;
+  yesLabel?: string;
+  noLabel?: string;
 }) {
   return (
     <div>
@@ -1020,7 +1067,7 @@ function FilterToggle({
               else onChange(false);
             }}
           >
-            {k === "any" ? "Any" : k === "yes" ? "Yes" : "No"}
+            {k === "any" ? "Any" : k === "yes" ? yesLabel : noLabel}
           </button>
         ))}
       </div>
