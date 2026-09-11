@@ -4,12 +4,14 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Briefcase,
   CheckCircle2,
   ChevronLeft,
   Info,
+  Landmark,
   Loader2,
   Smartphone,
-  Landmark,
+  UserRound,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
@@ -21,6 +23,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import {
   adminBanksList,
   adminUserDetail,
+  adminSendMoneyBusinessRate,
   adminSendMoneyCustomerRate,
   adminSendMoneyValidateAccount,
   adminSendMoneyOtpChallenge,
@@ -39,10 +42,12 @@ import { SendMoneyOtpDialog } from "./send-money-otp-dialog";
 const STEPS = [
   { id: 1, title: "Sender", description: "App user" },
   { id: 2, title: "Amount", description: "USD → receive" },
-  { id: 3, title: "Recipient", description: "MM / bank" },
+  { id: 3, title: "Recipient", description: "Person / business" },
   { id: 4, title: "Review", description: "Confirm" },
   { id: 5, title: "Result", description: "Queued" },
 ] as const;
+
+type RecipientKind = "person" | "business";
 
 function normalizeMsisdn(raw: string): string {
   let d = raw.replace(/\D/g, "");
@@ -175,7 +180,10 @@ export function SendMoneyFlow() {
 
   const customerGuid = userDetail?.cybrid?.cybrid_customer_id ?? null;
 
+  const [recipientKind, setRecipientKind] = React.useState<RecipientKind>("person");
   const [transferType, setTransferType] = React.useState<"mobile_money" | "bank">("mobile_money");
+  const isBusinessPayee = recipientKind === "business";
+  const payoutRail: "mobile_money" | "bank" = isBusinessPayee ? "bank" : transferType;
   const [sendUsd, setSendUsd] = React.useState("50");
   const [bondPercent, setBondPercent] = React.useState("0");
   const [receiveCurrency, setReceiveCurrency] = React.useState("UGX");
@@ -200,13 +208,32 @@ export function SendMoneyFlow() {
   const useBondRate = bondPctNum > 0;
 
   const fetchRate = React.useCallback(async () => {
-    if (!adminToken || !selectedUser) {
+    if (!adminToken) {
+      setRateError("Sign in to load a rate.");
+      return;
+    }
+    if (!isBusinessPayee && !selectedUser) {
       setRateError("Select a sender and ensure you are signed in.");
       return;
     }
     setRateLoading(true);
     setRateError(null);
     try {
+      if (isBusinessPayee) {
+        const data = await adminSendMoneyBusinessRate(adminToken, {
+          receive_currency: receiveCurrency,
+          send_currency: "USD",
+        });
+        setCustomerRate(data.businessRate);
+        if (sendUsdNum > 0 && data.businessRate > 0) {
+          setReceiveAmountLocal(Math.round(sendUsdNum * data.businessRate));
+        }
+        return;
+      }
+      if (!selectedUser) {
+        setRateError("Select a sender and ensure you are signed in.");
+        return;
+      }
       const data = await adminSendMoneyCustomerRate(adminToken, {
         user_id: selectedUser.user_id,
         useBondRate,
@@ -222,13 +249,20 @@ export function SendMoneyFlow() {
     } finally {
       setRateLoading(false);
     }
-  }, [adminToken, selectedUser, sendUsdNum, useBondRate]);
+  }, [adminToken, selectedUser, sendUsdNum, useBondRate, isBusinessPayee, receiveCurrency]);
 
   React.useEffect(() => {
     if (customerRate != null && customerRate > 0 && sendUsdNum > 0) {
       setReceiveAmountLocal(Math.round(sendUsdNum * customerRate));
     }
   }, [sendUsdNum, customerRate]);
+
+  React.useEffect(() => {
+    if (!isBusinessPayee) return;
+    setCustomerRate(null);
+    setReceiveAmountLocal(null);
+    setRateError(null);
+  }, [receiveCurrency, isBusinessPayee]);
 
   const [recipientName, setRecipientName] = React.useState("");
   const [mmPhone, setMmPhone] = React.useState("");
@@ -246,9 +280,16 @@ export function SendMoneyFlow() {
   const [bankSortCode, setBankSortCode] = React.useState("");
   const [senderMsisdn, setSenderMsisdn] = React.useState("");
   const [banks, setBanks] = React.useState<AdminBankListItem[]>([]);
+  const selectedBank = banks.find((b) => b.bankCode === bankSortCode.trim());
 
   React.useEffect(() => {
-    if (!adminToken || step !== 3 || transferType !== "bank") return;
+    const phone = userDetail?.profile.phone ?? selectedUser?.phone;
+    if (!phone) return;
+    setSenderMsisdn((current) => (current.trim() ? current : normalizeMsisdn(phone)));
+  }, [userDetail?.profile.phone, selectedUser?.phone]);
+
+  React.useEffect(() => {
+    if (!adminToken || step !== 3 || payoutRail !== "bank") return;
     let cancelled = false;
     adminBanksList(adminToken)
       .then((b) => {
@@ -260,7 +301,7 @@ export function SendMoneyFlow() {
     return () => {
       cancelled = true;
     };
-  }, [adminToken, step, transferType]);
+  }, [adminToken, step, payoutRail]);
 
   const [submitting, setSubmitting] = React.useState(false);
   /** Blocks a second in-flight submit before React re-renders (double-click / rapid taps). */
@@ -300,7 +341,7 @@ export function SendMoneyFlow() {
     remittanceBlockers.length === 0;
 
   const minReceive =
-    transferType === "bank"
+    payoutRail === "bank"
       ? receiveCurrency === "UGX"
         ? 5000
         : 100
@@ -316,7 +357,7 @@ export function SendMoneyFlow() {
     receiveAmountLocal >= minReceive;
 
   const canProceed3 =
-    transferType === "mobile_money"
+    payoutRail === "mobile_money"
       ? recipientName.trim().length > 0 && normalizeMsisdn(mmPhone).length >= 12
       : Boolean(bankAccount.trim()) &&
         Boolean(bankSortCode.trim()) &&
@@ -405,18 +446,21 @@ export function SendMoneyFlow() {
     const meta = buildRequestMetadata();
 
     const base: Record<string, unknown> = {
-      transferType,
+      transferType: payoutRail,
       paymentType: "payout",
       channel: "web_app",
       amount: amountMinor,
       currency: receiveCurrency.toUpperCase(),
-      recipientName: transferType === "bank" ? bankHolder.trim() : recipientName.trim(),
+      recipientName: payoutRail === "bank" ? bankHolder.trim() : recipientName.trim(),
       deviceType: "Web",
       amountSend: transferCents,
       currencySend: "USD",
       amountReceive: recv,
       currencyReceive: receiveCurrency.toUpperCase(),
-      metadata: meta,
+      metadata: {
+        ...meta,
+        recipientEntityType: isBusinessPayee ? "business" : "individual",
+      },
       riskScore: 0,
       riskLevel: "LOW",
       userAgent: typeof meta.userAgent === "string" ? meta.userAgent : undefined,
@@ -427,15 +471,18 @@ export function SendMoneyFlow() {
     }
 
     if (bondPctNum > 0) {
-      base.metadata = { ...meta, bondPercent: bondPctNum };
+      base.metadata = {
+        ...(base.metadata as Record<string, unknown>),
+        bondPercent: bondPctNum,
+      };
     }
 
     const refMm = mmValidation?.providerReference?.trim();
     const refBank = bankValidation?.providerReference?.trim();
-    if (transferType === "mobile_money" && refMm) base.referenceId = refMm;
-    if (transferType === "bank" && refBank) base.referenceId = refBank;
+    if (payoutRail === "mobile_money" && refMm) base.referenceId = refMm;
+    if (payoutRail === "bank" && refBank) base.referenceId = refBank;
 
-    if (transferType === "mobile_money") {
+    if (payoutRail === "mobile_money") {
       base.phoneNumber = normalizeMsisdn(mmPhone);
       base.network = mmNetwork;
     } else {
@@ -528,12 +575,25 @@ export function SendMoneyFlow() {
     }
   };
 
+  const selectRecipientKind = (kind: RecipientKind) => {
+    setRecipientKind(kind);
+    setCustomerRate(null);
+    setReceiveAmountLocal(null);
+    setRateError(null);
+    if (kind === "business") {
+      setTransferType("bank");
+      setMmValidation(null);
+    }
+  };
+
   const resetFlow = () => {
     setStep(1);
     setPaymentResult(null);
     setSubmitError(null);
     setMmValidation(null);
     setBankValidation(null);
+    setRecipientKind("person");
+    setTransferType("mobile_money");
     setOtpChallengeId(null);
     setOtpCode("");
     setOtpError(null);
@@ -549,10 +609,9 @@ export function SendMoneyFlow() {
             Send money
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-[15px]">
-            Creates a transfer on behalf of the selected customer via the API gateway{" "}
-            <code className="rounded bg-surface-muted px-1 text-xs">POST /api/v1/admin/transfers</code>
-            {" "}(staff session only — Super / Operations / Finance). Pays out on Pegasus
-            directly — no Cybrid or RytePay funding.
+            Pay a person (mobile money or bank) or a business (bank account only) on behalf of
+            the selected customer. Staff session required (Super / Operations / Finance). Pays
+            out on Pegasus directly — no Cybrid or RytePay funding.
           </p>
         </div>
         {step > 1 && step < 5 ? (
@@ -620,8 +679,9 @@ export function SendMoneyFlow() {
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 size-4 shrink-0 text-primary" />
                     <p>
-                      Choose the customer who owns this payout. Send-money-only customers can be
-                      selected without investment onboarding.
+                      Choose the customer who owns this payout. Next you will choose whether they
+                      are paying a person or a business. Send-money-only customers can be selected
+                      without investment onboarding.
                     </p>
                   </div>
                 </div>
@@ -719,36 +779,127 @@ export function SendMoneyFlow() {
                 exit={{ opacity: 0, x: -12 }}
                 className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6"
               >
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTransferType("mobile_money")}
-                    className={cn(
-                      "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
-                      transferType === "mobile_money"
-                        ? "border-primary bg-primary-muted/40 text-primary"
-                        : "border-border bg-surface hover:bg-surface-muted",
-                    )}
-                  >
-                    <Smartphone className="size-5" />
-                    Mobile money
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTransferType("bank")}
-                    className={cn(
-                      "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
-                      transferType === "bank"
-                        ? "border-primary bg-primary-muted/40 text-primary"
-                        : "border-border bg-surface hover:bg-surface-muted",
-                    )}
-                  >
-                    <Landmark className="size-5" />
-                    Bank
-                  </button>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Pay to
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      aria-pressed={recipientKind === "person"}
+                      onClick={() => selectRecipientKind("person")}
+                      className={cn(
+                        "flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition",
+                        recipientKind === "person"
+                          ? "border-primary bg-primary-muted/40"
+                          : "border-border bg-surface hover:bg-surface-muted",
+                      )}
+                    >
+                      <UserRound
+                        className={cn(
+                          "mt-0.5 size-5 shrink-0",
+                          recipientKind === "person" ? "text-primary" : "text-muted-foreground",
+                        )}
+                      />
+                      <span>
+                        <span
+                          className={cn(
+                            "block text-sm font-semibold",
+                            recipientKind === "person" ? "text-primary" : "text-foreground",
+                          )}
+                        >
+                          Person
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Mobile money or bank account
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={recipientKind === "business"}
+                      onClick={() => selectRecipientKind("business")}
+                      className={cn(
+                        "flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition",
+                        recipientKind === "business"
+                          ? "border-primary bg-primary-muted/40"
+                          : "border-border bg-surface hover:bg-surface-muted",
+                      )}
+                    >
+                      <Briefcase
+                        className={cn(
+                          "mt-0.5 size-5 shrink-0",
+                          recipientKind === "business" ? "text-primary" : "text-muted-foreground",
+                        )}
+                      />
+                      <span>
+                        <span
+                          className={cn(
+                            "block text-sm font-semibold",
+                            recipientKind === "business" ? "text-primary" : "text-foreground",
+                          )}
+                        >
+                          Business
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Bank account only
+                        </span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                {isBusinessPayee ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-primary/25 bg-primary-muted/20 px-4 py-3 text-sm text-foreground">
+                    <Landmark className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <p>
+                      Business payouts go to a <span className="font-medium">bank account</span> only.
+                      Mobile money is not available for this destination.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Payout method
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        aria-pressed={transferType === "mobile_money"}
+                        onClick={() => setTransferType("mobile_money")}
+                        className={cn(
+                          "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
+                          transferType === "mobile_money"
+                            ? "border-primary bg-primary-muted/40 text-primary"
+                            : "border-border bg-surface hover:bg-surface-muted",
+                        )}
+                      >
+                        <Smartphone className="size-5" />
+                        Mobile money
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={transferType === "bank"}
+                        onClick={() => setTransferType("bank")}
+                        className={cn(
+                          "flex flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition",
+                          transferType === "bank"
+                            ? "border-primary bg-primary-muted/40 text-primary"
+                            : "border-border bg-surface hover:bg-surface-muted",
+                        )}
+                      >
+                        <Landmark className="size-5" />
+                        Bank
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Amount
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-foreground">You send (USD)</label>
                     <Input
@@ -801,12 +952,13 @@ export function SendMoneyFlow() {
                     </select>
                   </div>
                 </div>
+                </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={rateLoading || !adminToken || !selectedUser}
+                    disabled={rateLoading || !adminToken || (!isBusinessPayee && !selectedUser)}
                     onClick={() => void fetchRate()}
                     className="gap-2"
                   >
@@ -815,11 +967,17 @@ export function SendMoneyFlow() {
                         <Loader2 className="size-4 animate-spin" />
                         Loading rate…
                       </>
+                    ) : isBusinessPayee ? (
+                      "Fetch business rate"
                     ) : (
                       "Fetch customer rate"
                     )}
                   </Button>
-                  {useBondRate ? (
+                  {isBusinessPayee ? (
+                    <span className="text-xs text-muted-foreground">
+                      Uses the System Admin business rate for USD → {receiveCurrency}.
+                    </span>
+                  ) : useBondRate ? (
                     <span className="text-xs text-muted-foreground">Using bond tier rate.</span>
                   ) : (
                     <span className="text-xs text-muted-foreground">Using standard tier rate.</span>
@@ -840,12 +998,13 @@ export function SendMoneyFlow() {
                   </p>
                   {customerRate != null ? (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Rate: 1 USD → {customerRate} {receiveCurrency}
+                      {isBusinessPayee ? "Business rate" : "Customer rate"}: 1 USD → {customerRate}{" "}
+                      {receiveCurrency}
                     </p>
                   ) : null}
                   <p className="mt-2 text-xs text-muted-foreground">
                     Minimum receive: {minReceive} {receiveCurrency}{" "}
-                    {transferType === "bank" ? "(bank)" : "(mobile)"}.
+                    {payoutRail === "bank" ? "(bank)" : "(mobile)"}.
                   </p>
                 </div>
 
@@ -855,7 +1014,7 @@ export function SendMoneyFlow() {
                   disabled={!canProceed2}
                   onClick={nextStep}
                 >
-                  Recipient details
+                  {isBusinessPayee ? "Business bank details" : "Recipient details"}
                   <ArrowRight className="size-4" />
                 </Button>
               </motion.div>
@@ -869,7 +1028,34 @@ export function SendMoneyFlow() {
                 exit={{ opacity: 0, x: -12 }}
                 className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5"
               >
-                {transferType === "mobile_money" ? (
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {isBusinessPayee
+                      ? "Business bank account"
+                      : payoutRail === "bank"
+                        ? "Recipient bank account"
+                        : "Mobile money recipient"}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {isBusinessPayee
+                      ? "Business payouts can only credit a bank account. Enter the registered account details."
+                      : payoutRail === "bank"
+                        ? "Enter the person’s bank account. Validate first when you can."
+                        : "Enter the person’s mobile money number and network."}
+                  </p>
+                </div>
+
+                {isBusinessPayee ? (
+                  <div className="rounded-xl border border-primary/25 bg-primary-muted/15 px-4 py-3 text-sm text-foreground">
+                    <p className="font-semibold">Paying a business</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Mobile money is not available for this destination. Pegasus will credit the
+                      business bank account below.
+                    </p>
+                  </div>
+                ) : null}
+
+                {payoutRail === "mobile_money" ? (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
@@ -933,11 +1119,15 @@ export function SendMoneyFlow() {
                 ) : (
                   <>
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground">Account number</label>
+                      <label className="text-xs font-medium text-foreground">
+                        {isBusinessPayee ? "Business account number" : "Account number"}
+                      </label>
                       <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground">Bank</label>
+                      <label className="text-xs font-medium text-foreground">
+                        {isBusinessPayee ? "Business bank" : "Bank"}
+                      </label>
                       <select
                         className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
                         value={bankSortCode}
@@ -972,14 +1162,22 @@ export function SendMoneyFlow() {
                     {bankValidation ? (
                       <SendMoneyValidationCard
                         v={bankValidation}
-                        applyLabel="Copy validated name into account holder"
+                        applyLabel={
+                          isBusinessPayee
+                            ? "Copy validated name into business name"
+                            : "Copy validated name into account holder"
+                        }
                         onApplyName={() => setBankHolder(bankValidation.accountName.trim())}
                       />
                     ) : null}
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground">Account holder</label>
+                      <label className="text-xs font-medium text-foreground">
+                        {isBusinessPayee ? "Business / account name" : "Account holder"}
+                      </label>
                       <p className="text-[11px] text-muted-foreground">
-                        Pre-filled from validation when the bank returns an account name.
+                        {isBusinessPayee
+                          ? "Use the registered business name on the bank account. Validation can fill this."
+                          : "Pre-filled from validation when the bank returns an account name."}
                       </p>
                       <Input value={bankHolder} onChange={(e) => setBankHolder(e.target.value)} />
                     </div>
@@ -1024,7 +1222,16 @@ export function SendMoneyFlow() {
               >
                 <div className="space-y-3 rounded-xl border border-border bg-surface-muted/50 p-5 text-sm">
                   <Row k="Sender user" v={selectedUser?.user_id ?? "—"} />
-                  <Row k="Rail" v={transferType === "mobile_money" ? "Mobile money" : "Bank"} />
+                  <Row k="Pay to" v={isBusinessPayee ? "Business" : "Person"} />
+                  <Row
+                    k={isBusinessPayee ? "Business rate" : "Customer rate"}
+                    v={
+                      customerRate != null
+                        ? `1 USD → ${customerRate.toLocaleString()} ${receiveCurrency}`
+                        : "—"
+                    }
+                  />
+                  <Row k="Rail" v={payoutRail === "mobile_money" ? "Mobile money" : "Bank"} />
                   <Row k="Debit (USD)" v={`${sendUsdNum.toFixed(2)} USD`} />
                   <Row
                     k="Credit"
@@ -1035,22 +1242,32 @@ export function SendMoneyFlow() {
                     }
                   />
                   <Row
-                    k="Recipient"
+                    k={isBusinessPayee ? "Business name" : "Recipient"}
                     v={
-                      transferType === "bank"
+                      payoutRail === "bank"
                         ? bankHolder.trim() || "—"
                         : recipientName.trim() || "—"
                     }
                   />
-                  {transferType === "mobile_money" ? (
+                  {payoutRail === "mobile_money" ? (
                     <Row
                       k="Phone / network"
                       v={`${normalizeMsisdn(mmPhone)} · ${mmNetwork}`}
                     />
                   ) : (
                     <>
-                      <Row k="Account" v={bankAccount.trim()} />
-                      <Row k="Bank sort code" v={bankSortCode.trim()} />
+                      <Row
+                        k={isBusinessPayee ? "Business account" : "Account"}
+                        v={bankAccount.trim()}
+                      />
+                      <Row
+                        k="Bank"
+                        v={
+                          selectedBank
+                            ? `${selectedBank.bankName} (${selectedBank.bankCode})`
+                            : bankSortCode.trim()
+                        }
+                      />
                       <Row k="Sender msisdn" v={normalizeMsisdn(senderMsisdn)} />
                     </>
                   )}
@@ -1094,7 +1311,7 @@ export function SendMoneyFlow() {
                   <h2 className="text-xl font-semibold text-foreground">Payment queued</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Provider processing was enqueued (same path as the mobile app). Final status appears in
-                    transactions and the work queue.
+                    {isBusinessPayee ? " Business Partner" : " Transactions"} and the work queue.
                   </p>
                   {paymentResult?.transactionId ? (
                     <p className="mt-3 font-mono text-sm text-foreground break-all">
@@ -1111,10 +1328,10 @@ export function SendMoneyFlow() {
                 </div>
                 <div className="flex w-full max-w-sm flex-col gap-2 pt-4">
                   <Link
-                    href="/transactions"
+                    href={isBusinessPayee ? "/business-partners" : "/transactions"}
                     className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "w-full")}
                   >
-                    Open transactions
+                    {isBusinessPayee ? "Open Business Partner" : "Open transactions"}
                   </Link>
                   <Link
                     href="/queue"

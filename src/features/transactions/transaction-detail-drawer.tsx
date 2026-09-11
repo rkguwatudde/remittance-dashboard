@@ -263,6 +263,9 @@ export function TransactionDetailDrawer({
               <Badge variant={statusBadgeVariant(displayTx.status)} className="capitalize">
                 {displayTx.status.toLowerCase().replace(/_/g, " ")}
               </Badge>
+              {displayTx.recipient_entity_type === "business" ? (
+                <Badge variant="secondary">Business partner</Badge>
+              ) : null}
               {fundingLegs.length > 1 ? (
                 <Badge variant="outline">Split funding</Badge>
               ) : funding.kind !== "unknown" ? (
@@ -331,7 +334,14 @@ export function TransactionDetailDrawer({
                 <DetailItem label="Recipient phone" value={displayTx.phone_number} mono />
                 <DetailItem label="Bank account" value={displayTx.account_number} mono />
                 <DetailItem label="Bank sort code" value={displayTx.bank_sort_code} mono />
-                <DetailItem label="Recipient name" value={displayTx.recipient_name} />
+                <DetailItem
+                  label={
+                    displayTx.recipient_entity_type === "business"
+                      ? "Business name"
+                      : "Recipient name"
+                  }
+                  value={displayTx.recipient_name}
+                />
                 <DetailItem label="Narration" value={displayTx.narration} />
                 <DetailItem
                   label="Updated"

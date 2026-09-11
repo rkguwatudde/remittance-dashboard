@@ -19,6 +19,14 @@ const parentHasWorkspaceLockfile = fs.existsSync(
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  transpilePackages: ["@react-pdf/renderer"],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+    };
+    return config;
+  },
   ...(parentHasWorkspaceLockfile
     ? { outputFileTracingRoot: parentDir }
     : {}),

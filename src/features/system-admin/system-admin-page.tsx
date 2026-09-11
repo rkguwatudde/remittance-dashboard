@@ -55,6 +55,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AuditLogDrawer } from "./audit-log-drawer";
+import { BusinessRatesCard } from "./business-rates-card";
 import { ExchangeRatesCard } from "./exchange-rates-card";
 import { ProviderLogsDrawer } from "./provider-logs-drawer";
 import { RemittanceAuditDrawer } from "./remittance-audit-drawer";
@@ -924,6 +925,7 @@ export function SystemAdminPage() {
       </Card>
 
       <ExchangeRatesCard withToken={withToken} isSuper={isSuper} />
+      <BusinessRatesCard withToken={withToken} isSuper={isSuper} />
 
       {/* Audits */}
       <Card className="overflow-hidden">

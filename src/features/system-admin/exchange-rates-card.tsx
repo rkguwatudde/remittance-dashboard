@@ -244,9 +244,9 @@ export function ExchangeRatesCard({
           <div>
             <CardTitle className="text-base">Remittance fees (remittance_fees_config)</CardTitle>
             <p className="mt-1 max-w-xl text-xs text-muted-foreground">
-              Live send-money FX and fee tiers. Customer rate is what the user sees; provider rate is
-              the rail. BoraBond fee, remittance %, basis points, and instant are generated from those
-              two rates.
+              Live send-money FX and fee tiers for person / customer payouts. Customer rate is what
+              the user sees; provider rate is the rail. Business payouts use the separate Business
+              rates table below.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

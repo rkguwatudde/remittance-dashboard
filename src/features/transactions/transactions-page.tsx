@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileText,
   Loader2,
   RefreshCw,
   Search,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
 
+import { ExportStatementModal } from "./export-statement-modal";
 import { TransactionDetailDrawer } from "./transaction-detail-drawer";
 import {
   formatSplitFundingListLabel,
@@ -53,6 +55,13 @@ function csvEscape(s: string): string {
 }
 
 function formatRecipient(row: AdminRemittanceTransactionRow): string {
+  if (row.recipient_entity_type === "business") {
+    const name = row.recipient_name?.trim();
+    const acct = row.account_number?.trim();
+    const masked = acct ? (acct.length > 6 ? `…${acct.slice(-6)}` : acct) : "";
+    if (name && masked) return `${name} · ${masked}`;
+    return name || masked || "—";
+  }
   if (row.transfer_type === "bank" && row.account_number?.trim()) {
     const acct = row.account_number.trim();
     return acct.length > 6 ? `…${acct.slice(-6)}` : acct;
@@ -119,7 +128,13 @@ function FundingCell({ row }: { row: AdminRemittanceTransactionRow }) {
   );
 }
 
-export function TransactionsPage() {
+export function TransactionsPage({
+  scope = "customer",
+}: {
+  scope?: "customer" | "business";
+}) {
+  const isBusinessLedger = scope === "business";
+  const entityType: "individual" | "business" = isBusinessLedger ? "business" : "individual";
   const { getAccessToken, refreshAccessToken } = useAuth();
   const [rows, setRows] = React.useState<AdminRemittanceTransactionRow[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -129,6 +144,10 @@ export function TransactionsPage() {
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<AdminRemittanceTransactionRow | null>(null);
   const [exporting, setExporting] = React.useState(false);
+  const [statementOpen, setStatementOpen] = React.useState(false);
+  const [banner, setBanner] = React.useState<{ kind: "success" | "error"; text: string } | null>(
+    null,
+  );
 
   const [sort, setSort] = React.useState<"created_at_desc" | "created_at_asc">("created_at_desc");
   const [qInput, setQInput] = React.useState("");
@@ -162,9 +181,10 @@ export function TransactionsPage() {
         status,
         amount_min: amountMin.trim() || undefined,
         amount_max: amountMax.trim() || undefined,
+        recipient_entity_type: entityType,
       };
     },
-    [sort, q, dateFrom, dateTo, statusSel, amountMin, amountMax],
+    [sort, q, dateFrom, dateTo, statusSel, amountMin, amountMax, entityType],
   );
 
   const load = React.useCallback(async () => {
@@ -223,6 +243,18 @@ export function TransactionsPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.floor(offset / PAGE_SIZE) + 1;
 
+  const statementDefaults = React.useMemo(() => {
+    const seed = dateFrom.trim() || dateTo.trim();
+    if (seed) {
+      const parsed = new Date(`${seed}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) {
+        return { month: parsed.getMonth(), year: parsed.getFullYear() };
+      }
+    }
+    const now = new Date();
+    return { month: now.getMonth(), year: now.getFullYear() };
+  }, [dateFrom, dateTo]);
+
   const toggleStatus = (s: string) => {
     setOffset(0);
     setStatusSel((prev) => {
@@ -262,6 +294,7 @@ export function TransactionsPage() {
         status,
         amount_min: amountMin.trim() || undefined,
         amount_max: amountMax.trim() || undefined,
+        recipient_entity_type: entityType,
       };
       while (collected.length < EXPORT_CAP) {
         const res = await adminRemittanceTransactions(token, { ...base, offset: off });
@@ -307,11 +340,7 @@ export function TransactionsPage() {
             csvEscape(bondLeg?.cybridGuid ?? ""),
             csvEscape(formatFees(r)),
             csvEscape(r.payout_provider_status ?? ""),
-            csvEscape(
-              r.transfer_type === "bank"
-                ? (r.account_number ?? "").trim()
-                : (r.phone_number ?? "").trim(),
-            ),
+            csvEscape(formatRecipient(r)),
             csvEscape(r.narration ?? ""),
             csvEscape(r.status),
             csvEscape(r.transaction_ref),
@@ -323,7 +352,7 @@ export function TransactionsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `remittance-transactions-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
+      a.download = `${isBusinessLedger ? "business-partner" : "remittance"}-transactions-${format(new Date(), "yyyyMMdd-HHmm")}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -340,10 +369,12 @@ export function TransactionsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-            Transactions
+            {isBusinessLedger ? "Business Partner" : "Transactions"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
-            Filterable remittance ledger with funding method, Cybrid rail, and payout context.
+            {isBusinessLedger
+              ? "Bank payouts to businesses only. Customer remittances stay on Transactions."
+              : "Customer remittance ledger. Business-partner payouts are tracked separately under Business Partner."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -357,6 +388,20 @@ export function TransactionsPage() {
             {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             Export CSV
           </Button>
+          {isBusinessLedger ? null : (
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={loading}
+              onClick={() => {
+                setBanner(null);
+                setStatementOpen(true);
+              }}
+            >
+              <FileText className="size-4" />
+              Export Statement
+            </Button>
+          )}
         </div>
       </div>
 
@@ -368,7 +413,11 @@ export function TransactionsPage() {
               <Input
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
-                placeholder="Search email, phone, platform ID, ref…"
+                placeholder={
+                  isBusinessLedger
+                    ? "Search business name, account, platform ID, ref…"
+                    : "Search email, phone, platform ID, ref…"
+                }
                 className="h-10 border-transparent bg-surface-muted pl-9 focus-visible:bg-surface"
               />
             </div>
@@ -493,6 +542,20 @@ export function TransactionsPage() {
         </div>
       </Card>
 
+      {banner ? (
+        <Card
+          className={cn(
+            "p-4 text-sm",
+            banner.kind === "success"
+              ? "border-success/40 bg-success-muted/30 text-foreground"
+              : "border-destructive/40 bg-destructive/5 text-destructive",
+          )}
+          role="status"
+        >
+          {banner.text}
+        </Card>
+      ) : null}
+
       {error ? (
         <Card className="border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
@@ -505,13 +568,13 @@ export function TransactionsPage() {
             <thead>
               <tr className="border-b border-border bg-surface-muted/60 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-3">Date / time</th>
-                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">{isBusinessLedger ? "Sender" : "Customer"}</th>
                 <th className="px-4 py-3">Remittance</th>
                 <th className="px-4 py-3">Funding</th>
                 <th className="px-4 py-3">Bond</th>
                 <th className="px-4 py-3">Fees</th>
                 <th className="px-4 py-3">Payout</th>
-                <th className="px-4 py-3">Recipient</th>
+                <th className="px-4 py-3">{isBusinessLedger ? "Business" : "Recipient"}</th>
                 <th className="px-4 py-3">Narration</th>
                 <th className="px-4 py-3">Status</th>
               </tr>
@@ -527,6 +590,15 @@ export function TransactionsPage() {
                       ))}
                     </tr>
                   ))
+                : rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        {isBusinessLedger
+                          ? "No business-partner payouts yet. Send money to a business to see it here."
+                          : "No customer transactions match these filters."}
+                      </td>
+                    </tr>
+                  )
                 : rows.map((row) => (
                     <tr
                       key={row.id}
@@ -625,6 +697,17 @@ export function TransactionsPage() {
         onClose={() => setDrawerOpen(false)}
         onFullyClosed={() => setSelected(null)}
       />
+
+      {isBusinessLedger ? null : (
+        <ExportStatementModal
+          open={statementOpen}
+          defaultMonth={statementDefaults.month}
+          defaultYear={statementDefaults.year}
+          onClose={() => setStatementOpen(false)}
+          onSuccess={(text) => setBanner({ kind: "success", text })}
+          onError={(text) => setBanner({ kind: "error", text })}
+        />
+      )}
     </div>
   );
 }

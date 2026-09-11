@@ -681,11 +681,14 @@ export type AdminRemittanceTransactionRow = {
   currency_send: string | null;
   amount_receive: number | null;
   currency_receive: string | null;
+  /** Locked customer FX rate (receive per 1 send), from transfers.conversion_rate. */
+  conversion_rate?: number | null;
   recipient_name: string | null;
   narration: string | null;
   account_number: string | null;
   bank_sort_code: string | null;
   transfer_type: string;
+  recipient_entity_type?: "individual" | "business" | null;
   payment_type: string;
   provider: string;
   reference_id: string | null;
@@ -765,6 +768,7 @@ export async function adminRemittanceTransactions(
     amount_min?: string;
     amount_max?: string;
     q?: string;
+    recipient_entity_type?: "individual" | "business";
   },
 ) {
   const raw = await request<{ success: boolean; data: AdminRemittanceTransactionsResult }>(
@@ -869,6 +873,91 @@ export async function adminDeleteExchangeRate(accessToken: string, id: string) {
     `/api/v1/admin/transfers/exchange-rates/${encodeURIComponent(id)}`,
     { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
   );
+}
+
+/** Row from transfer.remittance_business_rates (ops business FX). */
+export type AdminBusinessRateRow = {
+  id: string;
+  sendCurrency: string;
+  receiveCurrency: string;
+  businessRate: number;
+  providerRate: number | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminBusinessRateWriteBody = {
+  send_currency?: string;
+  receive_currency?: string;
+  business_rate?: number;
+  provider_rate?: number | null;
+  notes?: string | null;
+  is_active?: boolean;
+};
+
+export async function adminBusinessRatesList(accessToken: string) {
+  const raw = await request<{ success: boolean; data: { rates: AdminBusinessRateRow[] } }>(
+    "/api/v1/admin/transfers/business-rates",
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data.rates;
+}
+
+export async function adminCreateBusinessRate(
+  accessToken: string,
+  body: AdminBusinessRateWriteBody & { receive_currency: string; business_rate: number },
+) {
+  const raw = await request<{ success: boolean; data: { rate: AdminBusinessRateRow } }>(
+    "/api/v1/admin/transfers/business-rates",
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.rate;
+}
+
+export async function adminPatchBusinessRate(
+  accessToken: string,
+  id: string,
+  body: AdminBusinessRateWriteBody,
+) {
+  const raw = await request<{ success: boolean; data: { rate: AdminBusinessRateRow } }>(
+    `/api/v1/admin/transfers/business-rates/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.rate;
+}
+
+export async function adminDeleteBusinessRate(accessToken: string, id: string) {
+  await request<{ success: boolean; data: { id: string } }>(
+    `/api/v1/admin/transfers/business-rates/${encodeURIComponent(id)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+}
+
+export type AdminSendMoneyBusinessRate = {
+  businessRate: number;
+  providerRate: number | null;
+  sendCurrency: string;
+  receiveCurrency: string;
+  source?: string;
+};
+
+export async function adminSendMoneyBusinessRate(
+  accessToken: string,
+  params: { receive_currency: string; send_currency?: string },
+) {
+  const raw = await request<{ success: boolean; data: AdminSendMoneyBusinessRate }>(
+    `/api/v1/admin/transfers/business-rates/active${buildQuery({
+      receive_currency: params.receive_currency,
+      send_currency: params.send_currency,
+    })}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
 }
 
 export type AdminSavedRecipientRow = {

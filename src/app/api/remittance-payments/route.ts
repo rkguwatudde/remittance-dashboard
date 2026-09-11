@@ -137,6 +137,10 @@ export async function POST(req: NextRequest) {
       str(o.idempotency_key) ||
       `ops-send-${randomUUID()}`,
     sendMoneyOtpToken,
+    recipientEntityType:
+      str(pay.recipientEntityType) === "business" || str(meta.recipientEntityType) === "business"
+        ? "business"
+        : "individual",
   };
 
   const base = gatewayBaseUrl();
