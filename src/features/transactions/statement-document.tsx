@@ -18,7 +18,6 @@ import {
   ellipsize,
   formatCurrencyTotals,
   formatExchangeRate,
-  formatFeeAmount,
   formatLedgerAmount,
   formatRemittanceAmount,
   formatSendTotal,
@@ -211,12 +210,11 @@ const styles = StyleSheet.create({
   colDate: { width: "12%" },
   colId: { width: "13%" },
   colType: { width: "9%" },
-  colDesc: { width: "17%" },
+  colDesc: { width: "25%" },
   colStatus: { width: "9%" },
   colRate: { width: "10%", textAlign: "right" },
-  colAmt: { width: "11%", textAlign: "right" },
-  colFee: { width: "8%", textAlign: "right" },
-  colTotal: { width: "11%", textAlign: "right" },
+  colAmt: { width: "12%", textAlign: "right" },
+  colTotal: { width: "12%", textAlign: "right" },
   footer: {
     position: "absolute",
     left: 36,
@@ -286,7 +284,6 @@ function TableHeader() {
       <Text style={[styles.tableHeaderText, styles.colStatus]}>Status</Text>
       <Text style={[styles.tableHeaderText, styles.colRate]}>FX Rate</Text>
       <Text style={[styles.tableHeaderText, styles.colAmt]}>Amount</Text>
-      <Text style={[styles.tableHeaderText, styles.colFee]}>Fee</Text>
       <Text style={[styles.tableHeaderText, styles.colTotal]}>Total</Text>
     </View>
   );
@@ -323,9 +320,6 @@ export function StatementDocument({
   }
   if (summary.received.length) {
     metrics.push({ label: "Total received", value: formatCurrencyTotals(summary.received) });
-  }
-  if (summary.fees.length) {
-    metrics.push({ label: "Total fees", value: formatCurrencyTotals(summary.fees) });
   }
   if (summary.investedUsd != null) {
     metrics.push({ label: "Total invested", value: formatLedgerAmount(summary.investedUsd, "USD") });
@@ -406,7 +400,6 @@ export function StatementDocument({
               <Text style={[styles.colStatus, { fontSize: 7.5, color: statusColor(st.kind) }]}>{st.label}</Text>
               <Text style={[styles.cell, styles.colRate]}>{formatExchangeRate(row)}</Text>
               <Text style={[styles.cell, styles.colAmt]}>{formatRemittanceAmount(row)}</Text>
-              <Text style={[styles.cellMuted, styles.colFee]}>{formatFeeAmount(row)}</Text>
               <Text style={[styles.cell, styles.colTotal]}>{formatSendTotal(row)}</Text>
             </View>
           );

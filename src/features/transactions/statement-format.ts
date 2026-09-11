@@ -23,7 +23,6 @@ export type StatementSummary = {
   totalTransactions: number;
   sent: StatementCurrencyTotal[];
   received: StatementCurrencyTotal[];
-  fees: StatementCurrencyTotal[];
   investedUsd: number | null;
 };
 
@@ -63,11 +62,6 @@ export function formatRemittanceAmount(row: AdminRemittanceTransactionRow): stri
     return formatLedgerAmount(row.amount_receive, row.currency_receive);
   }
   return formatLedgerAmount(row.amount, row.currency);
-}
-
-export function formatFeeAmount(row: AdminRemittanceTransactionRow): string {
-  if (row.fee_charges == null) return "—";
-  return formatLedgerAmount(row.fee_charges, "USD");
 }
 
 export function formatSendTotal(row: AdminRemittanceTransactionRow): string {
@@ -189,7 +183,6 @@ function toTotals(map: Map<string, number>): StatementCurrencyTotal[] {
 export function buildStatementSummary(rows: AdminRemittanceTransactionRow[]): StatementSummary {
   const sent = new Map<string, number>();
   const received = new Map<string, number>();
-  const fees = new Map<string, number>();
   let invested = 0;
   let hasInvested = false;
 
@@ -199,9 +192,6 @@ export function buildStatementSummary(rows: AdminRemittanceTransactionRow[]): St
       addCurrency(sent, row.amount, row.currency);
     }
     addCurrency(received, row.amount_receive, row.currency_receive);
-    if (row.fee_charges != null) {
-      addCurrency(fees, row.fee_charges, "USD");
-    }
     if (row.bond_amount_usd != null) {
       invested += row.bond_amount_usd;
       hasInvested = true;
@@ -212,7 +202,6 @@ export function buildStatementSummary(rows: AdminRemittanceTransactionRow[]): St
     totalTransactions: rows.length,
     sent: toTotals(sent),
     received: toTotals(received),
-    fees: toTotals(fees),
     investedUsd: hasInvested ? invested : null,
   };
 }
