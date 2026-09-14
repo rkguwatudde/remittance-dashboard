@@ -291,7 +291,7 @@ export function SendMoneyFlow() {
       const usd = sendUsdFromReceiveMajor(receiveInputNum, customerRate);
       if (usd > 0) {
         setSendUsd(usd.toFixed(2));
-        setReceiveAmountLocal(lockedReceiveMajor(usd, customerRate));
+        setReceiveAmountLocal(receiveInputNum);
       }
       return;
     }
@@ -488,8 +488,10 @@ export function SendMoneyFlow() {
 
   const buildDirectPaymentBody = (): Record<string, unknown> => {
     const recv =
-      receiveAmountLocal ??
-      (customerRate && sendUsdNum > 0 ? Math.round(sendUsdNum * customerRate) : 0);
+      businessEnteringReceive && receiveInputNum > 0
+        ? receiveInputNum
+        : receiveAmountLocal ??
+          (customerRate && sendUsdNum > 0 ? Math.round(sendUsdNum * customerRate) : 0);
     const amountMinor = toMinorUnits(receiveCurrency, recv);
     const transferCents = Math.round(sendUsdNum * 100);
     const meta = buildRequestMetadata();
@@ -1109,8 +1111,14 @@ export function SendMoneyFlow() {
                 <div className="rounded-xl border border-border bg-surface-muted/40 p-4 text-sm">
                   {isBusinessPayee && amountEntryMode === "receive_local" ? (
                     <>
-                      <p className="text-muted-foreground">You send (approx.)</p>
+                      <p className="text-muted-foreground">Business receives</p>
                       <p className="text-2xl font-semibold text-foreground">
+                        {receiveInputNum > 0
+                          ? `${receiveInputNum.toLocaleString()} ${receiveCurrency}`
+                          : "—"}
+                      </p>
+                      <p className="mt-2 text-muted-foreground">You send (approx.)</p>
+                      <p className="text-lg font-medium text-foreground">
                         {sendUsdNum > 0 ? `$${sendUsdNum.toFixed(2)} USD` : "—"}
                       </p>
                     </>
@@ -1124,17 +1132,6 @@ export function SendMoneyFlow() {
                       </p>
                     </>
                   )}
-                  {isBusinessPayee && amountEntryMode === "receive_local" && receiveInputNum > 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Business receives (locked payout):{" "}
-                      {receiveAmountLocal != null
-                        ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
-                        : "—"}
-                      {receiveAmountLocal != null && receiveAmountLocal !== receiveInputNum
-                        ? " — rounded to match USD debit and FX lock"
-                        : null}
-                    </p>
-                  ) : null}
                   {customerRate != null ? (
                     <p className="mt-1 text-xs text-muted-foreground">
                       {isBusinessPayee ? "Business rate" : "Customer rate"}: 1 USD → {customerRate}{" "}
