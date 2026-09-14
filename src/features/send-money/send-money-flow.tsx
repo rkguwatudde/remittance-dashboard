@@ -191,7 +191,7 @@ export function SendMoneyFlow() {
   const [transferType, setTransferType] = React.useState<"mobile_money" | "bank">("mobile_money");
   const isBusinessPayee = recipientKind === "business";
   const payoutRail: "mobile_money" | "bank" = isBusinessPayee ? "bank" : transferType;
-  const [sendUsd, setSendUsd] = React.useState("50");
+  const [sendUsd, setSendUsd] = React.useState("");
   /** Business payouts only: enter USD or local receive amount (UGX/KES/TZS). */
   const [amountEntryMode, setAmountEntryMode] = React.useState<AmountEntryMode>("send_usd");
   const [receiveInput, setReceiveInput] = React.useState("");
@@ -219,6 +219,9 @@ export function SendMoneyFlow() {
   const useBondRate = bondPctNum > 0;
   const businessEnteringReceive =
     isBusinessPayee && amountEntryMode === "receive_local";
+  /** Business payout in local currency (UGX/KES/TZS) for display and validation. */
+  const businessReceiveUgx =
+    businessEnteringReceive ? receiveInputNum : (receiveAmountLocal ?? 0);
 
   const fetchRate = React.useCallback(async () => {
     if (!adminToken) {
@@ -242,9 +245,7 @@ export function SendMoneyFlow() {
           if (amountEntryMode === "receive_local" && receiveInputNum > 0) {
             const usd = sendUsdFromReceiveMajor(receiveInputNum, data.businessRate);
             setSendUsd(usd > 0 ? usd.toFixed(2) : "0");
-            setReceiveAmountLocal(
-              usd > 0 ? lockedReceiveMajor(usd, data.businessRate) : null,
-            );
+            setReceiveAmountLocal(receiveInputNum > 0 ? receiveInputNum : null);
           } else if (sendUsdNum > 0) {
             setReceiveAmountLocal(lockedReceiveMajor(sendUsdNum, data.businessRate));
           }
@@ -286,6 +287,7 @@ export function SendMoneyFlow() {
     if (businessEnteringReceive) {
       if (receiveInputNum <= 0) {
         setReceiveAmountLocal(null);
+        setSendUsd("");
         return;
       }
       const usd = sendUsdFromReceiveMajor(receiveInputNum, customerRate);
@@ -310,6 +312,7 @@ export function SendMoneyFlow() {
     setCustomerRate(null);
     setReceiveAmountLocal(null);
     setReceiveInput("");
+    setSendUsd("");
     setRateError(null);
   }, [receiveCurrency, isBusinessPayee]);
 
@@ -402,8 +405,7 @@ export function SendMoneyFlow() {
     sendUsdNum > 0 &&
     customerRate != null &&
     customerRate > 0 &&
-    receiveAmountLocal != null &&
-    receiveAmountLocal >= minReceive;
+    businessReceiveUgx >= minReceive;
 
   const canProceed3 =
     payoutRail === "mobile_money"
@@ -633,6 +635,7 @@ export function SendMoneyFlow() {
     setRateError(null);
     setReceiveInput("");
     setAmountEntryMode("send_usd");
+    setSendUsd("");
     if (kind === "business") {
       setTransferType("bank");
       setMmValidation(null);
@@ -647,6 +650,7 @@ export function SendMoneyFlow() {
     setBankValidation(null);
     setRecipientKind("person");
     setTransferType("mobile_money");
+    setSendUsd("");
     setOtpChallengeId(null);
     setOtpCode("");
     setOtpError(null);
@@ -985,6 +989,8 @@ export function SendMoneyFlow() {
                               setReceiveInput(
                                 String(lockedReceiveMajor(sendUsdNum, customerRate)),
                               );
+                            } else {
+                              setSendUsd("");
                             }
                           }}
                           className={cn(
@@ -1023,7 +1029,7 @@ export function SendMoneyFlow() {
                           inputMode="decimal"
                           value={sendUsd}
                           onChange={(e) => setSendUsd(e.target.value)}
-                          placeholder="50"
+                          placeholder="0"
                         />
                       </>
                     )}
@@ -1109,17 +1115,17 @@ export function SendMoneyFlow() {
                 ) : null}
 
                 <div className="rounded-xl border border-border bg-surface-muted/40 p-4 text-sm">
-                  {isBusinessPayee && amountEntryMode === "receive_local" ? (
+                  {isBusinessPayee ? (
                     <>
-                      <p className="text-muted-foreground">Business receives</p>
+                      <p className="text-muted-foreground">
+                        Business receives ({receiveCurrency})
+                      </p>
                       <p className="text-2xl font-semibold text-foreground">
-                        {receiveInputNum > 0
-                          ? `${receiveInputNum.toLocaleString()} ${receiveCurrency}`
-                          : "—"}
+                        {`${businessReceiveUgx.toLocaleString()} ${receiveCurrency}`}
                       </p>
                       <p className="mt-2 text-muted-foreground">You send (approx.)</p>
                       <p className="text-lg font-medium text-foreground">
-                        {sendUsdNum > 0 ? `$${sendUsdNum.toFixed(2)} USD` : "—"}
+                        ${sendUsdNum.toFixed(2)} USD
                       </p>
                     </>
                   ) : (
@@ -1129,6 +1135,10 @@ export function SendMoneyFlow() {
                         {receiveAmountLocal != null
                           ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
                           : "—"}
+                      </p>
+                      <p className="mt-2 text-muted-foreground">You send (approx.)</p>
+                      <p className="text-lg font-medium text-foreground">
+                        ${sendUsdNum.toFixed(2)} USD
                       </p>
                     </>
                   )}
@@ -1370,11 +1380,13 @@ export function SendMoneyFlow() {
                   <Row k="Rail" v={payoutRail === "mobile_money" ? "Mobile money" : "Bank"} />
                   <Row k="Debit (USD)" v={`${sendUsdNum.toFixed(2)} USD`} />
                   <Row
-                    k="Credit"
+                    k={isBusinessPayee ? `Business receives (${receiveCurrency})` : "Credit"}
                     v={
-                      receiveAmountLocal != null
-                        ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
-                        : "—"
+                      isBusinessPayee
+                        ? `${businessReceiveUgx.toLocaleString()} ${receiveCurrency}`
+                        : receiveAmountLocal != null
+                          ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
+                          : "—"
                     }
                   />
                   <Row
