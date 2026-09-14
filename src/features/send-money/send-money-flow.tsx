@@ -38,6 +38,13 @@ import { postRemittancePaymentsViaDashboardProxy } from "@/lib/remittance-paymen
 import { UserSelector } from "@/features/users/user-selector";
 import { CustomerSegmentBadge, DeviceBadge, PresenceIndicator, ProductBadge } from "@/features/users/user-badges";
 import { SendMoneyOtpDialog } from "./send-money-otp-dialog";
+import {
+  lockedReceiveMajor,
+  parseLocalReceiveInput,
+  sendUsdFromReceiveMajor,
+} from "./send-money-amount";
+
+type AmountEntryMode = "send_usd" | "receive_local";
 
 const STEPS = [
   { id: 1, title: "Sender", description: "App user" },
@@ -185,6 +192,9 @@ export function SendMoneyFlow() {
   const isBusinessPayee = recipientKind === "business";
   const payoutRail: "mobile_money" | "bank" = isBusinessPayee ? "bank" : transferType;
   const [sendUsd, setSendUsd] = React.useState("50");
+  /** Business payouts only: enter USD or local receive amount (UGX/KES/TZS). */
+  const [amountEntryMode, setAmountEntryMode] = React.useState<AmountEntryMode>("send_usd");
+  const [receiveInput, setReceiveInput] = React.useState("");
   const [bondPercent, setBondPercent] = React.useState("0");
   const [receiveCurrency, setReceiveCurrency] = React.useState("UGX");
   const [countryCode, setCountryCode] = React.useState("UG");
@@ -205,7 +215,10 @@ export function SendMoneyFlow() {
     ? 0
     : Math.min(100, Math.max(0, Number(bondPercent) || 0));
   const sendUsdNum = Number(sendUsd) || 0;
+  const receiveInputNum = parseLocalReceiveInput(receiveInput);
   const useBondRate = bondPctNum > 0;
+  const businessEnteringReceive =
+    isBusinessPayee && amountEntryMode === "receive_local";
 
   const fetchRate = React.useCallback(async () => {
     if (!adminToken) {
@@ -225,8 +238,16 @@ export function SendMoneyFlow() {
           send_currency: "USD",
         });
         setCustomerRate(data.businessRate);
-        if (sendUsdNum > 0 && data.businessRate > 0) {
-          setReceiveAmountLocal(Math.round(sendUsdNum * data.businessRate));
+        if (data.businessRate > 0) {
+          if (amountEntryMode === "receive_local" && receiveInputNum > 0) {
+            const usd = sendUsdFromReceiveMajor(receiveInputNum, data.businessRate);
+            setSendUsd(usd > 0 ? usd.toFixed(2) : "0");
+            setReceiveAmountLocal(
+              usd > 0 ? lockedReceiveMajor(usd, data.businessRate) : null,
+            );
+          } else if (sendUsdNum > 0) {
+            setReceiveAmountLocal(lockedReceiveMajor(sendUsdNum, data.businessRate));
+          }
         }
         return;
       }
@@ -240,7 +261,7 @@ export function SendMoneyFlow() {
       });
       setCustomerRate(data.customerRate);
       if (sendUsdNum > 0 && data.customerRate > 0) {
-        setReceiveAmountLocal(Math.round(sendUsdNum * data.customerRate));
+        setReceiveAmountLocal(lockedReceiveMajor(sendUsdNum, data.customerRate));
       }
     } catch (e) {
       const msg = e instanceof AdminApiError ? e.message : "Could not load exchange rate.";
@@ -249,18 +270,46 @@ export function SendMoneyFlow() {
     } finally {
       setRateLoading(false);
     }
-  }, [adminToken, selectedUser, sendUsdNum, useBondRate, isBusinessPayee, receiveCurrency]);
+  }, [
+    adminToken,
+    selectedUser,
+    sendUsdNum,
+    receiveInputNum,
+    amountEntryMode,
+    useBondRate,
+    isBusinessPayee,
+    receiveCurrency,
+  ]);
 
   React.useEffect(() => {
-    if (customerRate != null && customerRate > 0 && sendUsdNum > 0) {
-      setReceiveAmountLocal(Math.round(sendUsdNum * customerRate));
+    if (customerRate == null || customerRate <= 0) return;
+    if (businessEnteringReceive) {
+      if (receiveInputNum <= 0) {
+        setReceiveAmountLocal(null);
+        return;
+      }
+      const usd = sendUsdFromReceiveMajor(receiveInputNum, customerRate);
+      if (usd > 0) {
+        setSendUsd(usd.toFixed(2));
+        setReceiveAmountLocal(lockedReceiveMajor(usd, customerRate));
+      }
+      return;
     }
-  }, [sendUsdNum, customerRate]);
+    if (sendUsdNum > 0) {
+      setReceiveAmountLocal(lockedReceiveMajor(sendUsdNum, customerRate));
+    }
+  }, [
+    sendUsdNum,
+    receiveInputNum,
+    customerRate,
+    businessEnteringReceive,
+  ]);
 
   React.useEffect(() => {
     if (!isBusinessPayee) return;
     setCustomerRate(null);
     setReceiveAmountLocal(null);
+    setReceiveInput("");
     setRateError(null);
   }, [receiveCurrency, isBusinessPayee]);
 
@@ -580,6 +629,8 @@ export function SendMoneyFlow() {
     setCustomerRate(null);
     setReceiveAmountLocal(null);
     setRateError(null);
+    setReceiveInput("");
+    setAmountEntryMode("send_usd");
     if (kind === "business") {
       setTransferType("bank");
       setMmValidation(null);
@@ -899,15 +950,81 @@ export function SendMoneyFlow() {
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Amount
                   </p>
+                  {isBusinessPayee ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-foreground">Enter amount as</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={amountEntryMode === "send_usd"}
+                          onClick={() => {
+                            setAmountEntryMode("send_usd");
+                            if (receiveAmountLocal != null && receiveAmountLocal > 0) {
+                              setReceiveInput(String(receiveAmountLocal));
+                            }
+                          }}
+                          className={cn(
+                            "flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition",
+                            amountEntryMode === "send_usd"
+                              ? "border-primary bg-primary-muted/40 text-primary"
+                              : "border-border bg-surface hover:bg-surface-muted",
+                          )}
+                        >
+                          You send (USD)
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={amountEntryMode === "receive_local"}
+                          onClick={() => {
+                            setAmountEntryMode("receive_local");
+                            if (receiveAmountLocal != null && receiveAmountLocal > 0) {
+                              setReceiveInput(String(receiveAmountLocal));
+                            } else if (!receiveInput.trim() && sendUsdNum > 0 && customerRate != null) {
+                              setReceiveInput(
+                                String(lockedReceiveMajor(sendUsdNum, customerRate)),
+                              );
+                            }
+                          }}
+                          className={cn(
+                            "flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition",
+                            amountEntryMode === "receive_local"
+                              ? "border-primary bg-primary-muted/40 text-primary"
+                              : "border-border bg-surface hover:bg-surface-muted",
+                          )}
+                        >
+                          Business receives ({receiveCurrency})
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-foreground">You send (USD)</label>
-                    <Input
-                      inputMode="decimal"
-                      value={sendUsd}
-                      onChange={(e) => setSendUsd(e.target.value)}
-                      placeholder="50"
-                    />
+                    {isBusinessPayee && amountEntryMode === "receive_local" ? (
+                      <>
+                        <label className="text-xs font-medium text-foreground">
+                          Business receives ({receiveCurrency})
+                        </label>
+                        <Input
+                          inputMode="numeric"
+                          value={receiveInput}
+                          onChange={(e) => setReceiveInput(e.target.value)}
+                          placeholder={receiveCurrency === "UGX" ? "500000" : "10000"}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          USD debit is calculated from the business rate after you fetch the rate.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-xs font-medium text-foreground">You send (USD)</label>
+                        <Input
+                          inputMode="decimal"
+                          value={sendUsd}
+                          onChange={(e) => setSendUsd(e.target.value)}
+                          placeholder="50"
+                        />
+                      </>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-foreground">Bond % (0–100)</label>
@@ -990,12 +1107,34 @@ export function SendMoneyFlow() {
                 ) : null}
 
                 <div className="rounded-xl border border-border bg-surface-muted/40 p-4 text-sm">
-                  <p className="text-muted-foreground">Recipient gets (approx.)</p>
-                  <p className="text-2xl font-semibold text-foreground">
-                    {receiveAmountLocal != null
-                      ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
-                      : "—"}
-                  </p>
+                  {isBusinessPayee && amountEntryMode === "receive_local" ? (
+                    <>
+                      <p className="text-muted-foreground">You send (approx.)</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {sendUsdNum > 0 ? `$${sendUsdNum.toFixed(2)} USD` : "—"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted-foreground">Recipient gets (approx.)</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {receiveAmountLocal != null
+                          ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
+                          : "—"}
+                      </p>
+                    </>
+                  )}
+                  {isBusinessPayee && amountEntryMode === "receive_local" && receiveInputNum > 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Business receives (locked payout):{" "}
+                      {receiveAmountLocal != null
+                        ? `${receiveAmountLocal.toLocaleString()} ${receiveCurrency}`
+                        : "—"}
+                      {receiveAmountLocal != null && receiveAmountLocal !== receiveInputNum
+                        ? " — rounded to match USD debit and FX lock"
+                        : null}
+                    </p>
+                  ) : null}
                   {customerRate != null ? (
                     <p className="mt-1 text-xs text-muted-foreground">
                       {isBusinessPayee ? "Business rate" : "Customer rate"}: 1 USD → {customerRate}{" "}
