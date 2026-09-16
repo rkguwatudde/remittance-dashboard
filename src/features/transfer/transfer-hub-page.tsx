@@ -24,11 +24,28 @@ function isTabId(s: string | null): s is TabId {
   return s === "send" || s === "book" || s === "trade" || s === "cybrid";
 }
 
+const SEND_TAB_VIEWPORT =
+  "flex h-[calc(100dvh-7.5rem)] min-h-0 flex-col overflow-hidden sm:h-[calc(100dvh-7rem)]";
+
 export function TransferHubPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const raw = searchParams?.get("tab") ?? null;
   const activeTab: TabId = isTabId(raw) ? raw : DEFAULT_TAB;
+
+  React.useEffect(() => {
+    if (activeTab !== "send") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, [activeTab]);
 
   const setTab = React.useCallback(
     (id: TabId) => {
@@ -40,7 +57,7 @@ export function TransferHubPage() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-surface-muted/40 p-1">
         {TABS.map((tab) => (
           <button
@@ -59,8 +76,13 @@ export function TransferHubPage() {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {activeTab === "send" ? <SendMoneyFlow /> : null}
+      <div className={activeTab === "send" ? SEND_TAB_VIEWPORT : undefined}>
+        {activeTab === "send" ? (
+          <SendMoneyFlow
+            embeddedInTransferHub
+            initialBusinessPartnerId={searchParams?.get("partnerId")}
+          />
+        ) : null}
         {activeTab === "book" ? <BookTransferPage /> : null}
         {activeTab === "trade" ? <TradeAndTransferPage /> : null}
         {activeTab === "cybrid" ? <UsersDirectoryPage transferHub /> : null}

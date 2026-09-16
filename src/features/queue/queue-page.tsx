@@ -39,7 +39,7 @@ function statusBadgeVariant(
   }
 }
 
-export function QueuePage() {
+export function QueuePage({ embeddedInSystem = false }: { embeddedInSystem?: boolean }) {
   const { getAccessToken } = useAuth();
   const token = getAccessToken();
 
@@ -75,45 +75,75 @@ export function QueuePage() {
   const inFlight =
     (sendTotals?.pending ?? 0) + (sendTotals?.processing ?? 0) + (sendTotals?.failed ?? 0);
 
-  return (
-    <div className="mx-auto max-w-[1600px] space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-              Queues &amp; jobs
-            </h1>
-            {data && !loading ? (
-              <Badge variant="secondary" className="font-mono text-[10px]">
-                Updated {new Date(data.generated_at).toLocaleTimeString()}
-              </Badge>
-            ) : null}
+  const body = (
+    <>
+      {!embeddedInSystem ? (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+                Queues &amp; jobs
+              </h1>
+              {data && !loading ? (
+                <Badge variant="secondary" className="font-mono text-[10px]">
+                  Updated {new Date(data.generated_at).toLocaleTimeString()}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground md:text-[15px]">
+              Transfer status snapshot from <span className="font-mono">transfer.transfers</span> via
+              the API gateway.
+            </p>
           </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground md:text-[15px]">
-            Transfer status snapshot from <span className="font-mono">transfer.transfers</span>{" "}
-            via the API gateway.
-          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={loading || !token}
+            onClick={() => void load()}
+          >
+            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            Refresh
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="gap-2"
-          disabled={loading || !token}
-          onClick={() => void load()}
-        >
-          <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-          Refresh
-        </Button>
-      </div>
+      ) : (
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            BullMQ workers and send-money job snapshot from{" "}
+            <span className="font-mono text-[11px]">transfer.transfers</span>
+            {data && !loading ? (
+              <span className="ml-2 font-mono text-[10px] text-foreground/80">
+                · {new Date(data.generated_at).toLocaleTimeString()}
+              </span>
+            ) : null}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg text-xs"
+            disabled={loading || !token}
+            onClick={() => void load()}
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      )}
 
       {err ? (
-        <div className="rounded-lg border border-danger/40 bg-danger-muted/30 px-4 py-3 text-sm text-danger">
+        <div
+          className={cn(
+            "rounded-lg border border-danger/40 bg-danger-muted/30 text-sm text-danger",
+            embeddedInSystem ? "shrink-0 px-3 py-2 text-xs" : "px-4 py-3",
+          )}
+        >
           {err}
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={cn("grid gap-3 md:grid-cols-2", embeddedInSystem && "shrink-0")}>
         {loading && !data
           ? [0, 1].map((i) => (
               <Card key={i}>
@@ -165,7 +195,12 @@ export function QueuePage() {
             ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div
+        className={cn(
+          "grid gap-3 lg:grid-cols-4",
+          embeddedInSystem && "min-h-0 flex-1 lg:grid-rows-[auto_minmax(0,1fr)]",
+        )}
+      >
         <Card className="lg:col-span-1">
           <CardHeader className="flex flex-row items-center gap-2 border-b border-border pb-3">
             <Database className="size-4 text-primary" />
@@ -199,70 +234,73 @@ export function QueuePage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3">
-          <CardHeader className="flex flex-row items-center gap-2 border-b border-border pb-4">
-            <Server className="size-5 text-primary" />
+        <Card
+          className={cn(
+            "flex flex-col lg:col-span-3",
+            embeddedInSystem && "min-h-0 overflow-hidden border-border/80",
+          )}
+        >
+          <CardHeader className="flex shrink-0 flex-row items-center gap-2 border-b border-border py-3">
+            <Server className="size-4 text-primary" />
             <div>
-              <CardTitle className="text-base">Recent send-money jobs</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Newest by <span className="font-mono">updated_at</span> (API returns up to 40)
+              <CardTitle className="text-sm">Recent send-money jobs</CardTitle>
+              <p className="text-[11px] text-muted-foreground">
+                Newest by <span className="font-mono">updated_at</span> (up to 40)
               </p>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <th className="px-4 py-3">Job</th>
-                    <th className="px-4 py-3">User</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Updated</th>
-                    <th className="px-4 py-3">Transfer</th>
-                    <th className="px-4 py-3">Error</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {loading && !data
-                    ? Array.from({ length: 6 }).map((_, i) => (
-                        <tr key={i}>
-                          <td className="px-4 py-3" colSpan={7}>
-                            <Skeleton className="h-9 w-full" />
-                          </td>
-                        </tr>
-                      ))
-                    : data?.send_money_jobs.recent.map((row) => (
-                        <tr key={row.id} className="transition-colors hover:bg-surface-muted/40">
-                          <td className="px-4 py-3 font-mono text-xs font-medium text-foreground">
-                            {row.id.slice(0, 8)}…
-                          </td>
-                          <td className="max-w-[120px] truncate px-4 py-3 font-mono text-[11px] text-muted-foreground">
-                            {row.user_id.slice(0, 8)}…
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{row.transfer_type}</td>
-                          <td className="px-4 py-3">
-                            <Badge
-                              variant={statusBadgeVariant(row.status)}
-                              className="text-[10px] capitalize"
-                            >
-                              {row.status}
-                            </Badge>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-muted-foreground">
-                            {row.updated_at.slice(0, 19).replace("T", " ")}
-                          </td>
-                          <td className="max-w-[140px] truncate px-4 py-3 font-mono text-[10px] text-muted-foreground">
-                            {row.transfer_guid ?? "—"}
-                          </td>
-                          <td className="max-w-[220px] truncate px-4 py-3 text-xs text-muted-foreground">
-                            {row.error_message ?? "—"}
-                          </td>
-                        </tr>
-                      ))}
-                </tbody>
-              </table>
-            </div>
+          <CardContent className="min-h-0 flex-1 overflow-auto overscroll-contain p-0">
+            <table className="w-full min-w-[880px] text-left text-xs">
+              <thead className="sticky top-0 z-10 bg-surface-muted/95 backdrop-blur">
+                <tr className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2">Job</th>
+                  <th className="px-3 py-2">User</th>
+                  <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Updated</th>
+                  <th className="px-3 py-2">Transfer</th>
+                  <th className="px-3 py-2">Error</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {loading && !data
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2" colSpan={7}>
+                          <Skeleton className="h-7 w-full" />
+                        </td>
+                      </tr>
+                    ))
+                  : data?.send_money_jobs.recent.map((row) => (
+                      <tr key={row.id} className="transition-colors hover:bg-surface-muted/35">
+                        <td className="px-3 py-1.5 font-mono font-medium text-foreground">
+                          {row.id.slice(0, 8)}…
+                        </td>
+                        <td className="max-w-[100px] truncate px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+                          {row.user_id.slice(0, 8)}…
+                        </td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{row.transfer_type}</td>
+                        <td className="px-3 py-1.5">
+                          <Badge
+                            variant={statusBadgeVariant(row.status)}
+                            className="h-5 px-1.5 text-[10px] capitalize"
+                          >
+                            {row.status}
+                          </Badge>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+                          {row.updated_at.slice(0, 19).replace("T", " ")}
+                        </td>
+                        <td className="max-w-[120px] truncate px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+                          {row.transfer_guid ?? "—"}
+                        </td>
+                        <td className="max-w-[200px] truncate px-3 py-1.5 text-[10px] text-muted-foreground">
+                          {row.error_message ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
             {!loading && data && data.send_money_jobs.recent.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                 No send-money jobs in the database yet.
@@ -271,6 +309,12 @@ export function QueuePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </>
   );
+
+  if (embeddedInSystem) {
+    return <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">{body}</div>;
+  }
+
+  return <div className="mx-auto max-w-[1600px] space-y-8">{body}</div>;
 }

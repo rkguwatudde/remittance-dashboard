@@ -898,7 +898,7 @@ export function UsersDirectoryPage({ transferHub = false }: UsersDirectoryPagePr
             </Button>
           </div>
           {opsErr ? <p className="text-sm text-destructive">{opsErr}</p> : null}
-          <div className="max-h-[320px] overflow-auto text-xs">
+          <div className="overflow-x-auto text-xs">
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-surface-muted/90 text-muted-foreground">
                 <tr>

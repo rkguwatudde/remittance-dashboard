@@ -935,6 +935,123 @@ export async function adminDeleteBusinessRate(accessToken: string, id: string) {
   );
 }
 
+/** Ops business partner (transfer.remittance_business_partners). */
+export type AdminBusinessPartnerRow = {
+  id: string;
+  legalName: string;
+  tradingName: string | null;
+  countryCode: string;
+  receiveCurrency: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  notes: string | null;
+  isActive: boolean;
+  bankAccountNumber: string | null;
+  bankSortCode: string | null;
+  bankName: string | null;
+  accountHolderName: string | null;
+  pegasusSenderMsisdn: string | null;
+  bankValidatedAt: string | null;
+  bankValidationReference: string | null;
+  bankValidationAccountName: string | null;
+  hasValidatedBank: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminBusinessPartnerWriteBody = {
+  legal_name?: string;
+  trading_name?: string | null;
+  country_code?: string;
+  receive_currency?: string;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+  bank_account_number?: string | null;
+  bank_sort_code?: string | null;
+  bank_name?: string | null;
+  account_holder_name?: string | null;
+  pegasus_sender_msisdn?: string | null;
+  bank_validated_at?: string | null;
+  bank_validation_reference?: string | null;
+  bank_validation_account_name?: string | null;
+};
+
+export async function adminBusinessPartnersList(
+  accessToken: string,
+  params?: {
+    q?: string;
+    country_code?: string;
+    receive_currency?: string;
+    active_only?: boolean;
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const raw = await request<{
+    success: boolean;
+    data: { partners: AdminBusinessPartnerRow[]; total: number };
+  }>(
+    `/api/v1/admin/transfers/business-partners${buildQuery({
+      q: params?.q,
+      country_code: params?.country_code,
+      receive_currency: params?.receive_currency,
+      active_only: params?.active_only === false ? "false" : undefined,
+      limit: params?.limit,
+      offset: params?.offset,
+    })}`,
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data;
+}
+
+export async function adminBusinessPartnerGet(accessToken: string, id: string) {
+  const raw = await request<{ success: boolean; data: { partner: AdminBusinessPartnerRow } }>(
+    `/api/v1/admin/transfers/business-partners/${encodeURIComponent(id)}`,
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data.partner;
+}
+
+export async function adminCreateBusinessPartner(
+  accessToken: string,
+  body: AdminBusinessPartnerWriteBody & { legal_name: string },
+) {
+  const raw = await request<{ success: boolean; data: { partner: AdminBusinessPartnerRow } }>(
+    "/api/v1/admin/transfers/business-partners",
+    { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.partner;
+}
+
+export async function adminPatchBusinessPartner(
+  accessToken: string,
+  id: string,
+  body: AdminBusinessPartnerWriteBody,
+) {
+  const raw = await request<{ success: boolean; data: { partner: AdminBusinessPartnerRow } }>(
+    `/api/v1/admin/transfers/business-partners/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}` }, json: body },
+  );
+  return raw.data.partner;
+}
+
+export type AdminBusinessPartnerLedgerStats = {
+  totalTransactions: number;
+  amountTransacted: { currency: string; amountMajor: number };
+  receiveByCurrency: Array<{ currency: string; amountMajor: number }>;
+  totalFeesUsd: number;
+};
+
+export async function adminBusinessPartnerLedgerStats(accessToken: string) {
+  const raw = await request<{ success: boolean; data: { stats: AdminBusinessPartnerLedgerStats } }>(
+    "/api/v1/admin/transfers/business-partners/stats",
+    { method: "GET", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return raw.data.stats;
+}
+
 export type AdminSendMoneyBusinessRate = {
   businessRate: number;
   providerRate: number | null;
@@ -1937,7 +2054,7 @@ export type AdminSendMoneyValidateAccountResponse = AdminSendMoneyValidateResult
 
 export async function adminSendMoneyValidateAccount(
   accessToken: string,
-  body: { user_id: string; payload: Record<string, unknown> },
+  body: { user_id?: string; payload: Record<string, unknown> },
 ): Promise<AdminSendMoneyValidateAccountResponse> {
   const raw = await request<{
     success: boolean;
@@ -1947,7 +2064,7 @@ export async function adminSendMoneyValidateAccount(
   }>("/api/v1/admin/payments/validate-account", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
-    json: body,
+    json: body.user_id ? body : { payload: body.payload },
   });
   const d = raw.data;
   const accountName = d != null && typeof d === "object" ? String((d as AdminSendMoneyValidateResult).accountName ?? "") : "";

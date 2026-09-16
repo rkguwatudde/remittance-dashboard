@@ -24,7 +24,10 @@ import { RecipientFormDrawer } from "./recipient-form-drawer";
 import { RecipientSearchBar } from "./recipient-search-bar";
 import { RecipientTable } from "./recipient-table";
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 12;
+
+const RECIPIENTS_VIEWPORT =
+  "mx-auto flex h-[calc(100dvh-7.5rem)] min-h-0 max-w-[1760px] flex-col gap-3 overflow-hidden sm:h-[calc(100dvh-7rem)]";
 
 export function RecipientsPage() {
   const { getAccessToken, refreshAccessToken } = useAuth();
@@ -128,6 +131,19 @@ export function RecipientsPage() {
   }, [load]);
 
   React.useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, []);
+
+  React.useEffect(() => {
     setOffset(0);
   }, [tab, countryCode, showInactive]);
 
@@ -220,26 +236,67 @@ export function RecipientsPage() {
   const page = Math.floor(offset / PAGE_SIZE) + 1;
   const hasFilters = Boolean(q || countryCode || showInactive || tab !== "all");
 
+  const paginationBar = (
+    <div className="flex shrink-0 flex-col gap-2 border-t border-border/80 bg-surface-muted/40 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs text-muted-foreground sm:text-sm">
+        Showing{" "}
+        <span className="font-semibold text-foreground">
+          {total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE_SIZE, total)}
+        </span>{" "}
+        of <span className="font-semibold text-foreground">{total}</span>
+        {pageCount > 1 ? (
+          <span>
+            {" "}
+            · Page {page} / {pageCount}
+          </span>
+        ) : null}
+      </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="rounded-lg"
+          disabled={offset <= 0 || loading}
+          onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+        >
+          <ChevronLeft className="size-4" />
+          Previous
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="rounded-lg"
+          disabled={offset + PAGE_SIZE >= total || loading}
+          onClick={() => setOffset((o) => o + PAGE_SIZE)}
+        >
+          Next
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="mx-auto max-w-[1760px] space-y-6 pb-10">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+    <div className={RECIPIENTS_VIEWPORT}>
+      <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
             Recipients
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground md:text-[15px]">
-            Saved beneficiaries across customers — optimized for repeat sends, with usage signals
-            and soft-delete safety.
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            Saved beneficiaries · search, filter, and manage repeat-send contacts
           </p>
         </div>
-        <Button type="button" className="gap-2 rounded-xl shadow-sm" onClick={openAdd}>
+        <Button type="button" size="sm" className="shrink-0 gap-2 rounded-lg shadow-sm" onClick={openAdd}>
           <Plus className="size-4" />
           Add recipient
         </Button>
       </div>
 
-      <Card className="space-y-4 rounded-2xl border-border/80 p-5 shadow-[var(--shadow-card)]">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+      <Card className="shrink-0 space-y-3 rounded-xl border-border/80 p-3 shadow-[var(--shadow-card)] md:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
           <RecipientSearchBar value={qInput} onChange={setQInput} />
         </div>
         <RecipientFilters
@@ -262,62 +319,29 @@ export function RecipientsPage() {
       </Card>
 
       {listError ? (
-        <Card className="rounded-2xl border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+        <p className="shrink-0 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {listError}
-        </Card>
+        </p>
       ) : null}
 
-      {!loading && rows.length === 0 ? (
-        <RecipientEmptyState onAdd={openAdd} hasFilters={hasFilters} />
-      ) : (
-        <>
-          <RecipientTable
-            loading={loading}
-            rows={rows}
-            frequentMinSends={frequentMin}
-            onEdit={openEdit}
-            onDisable={openDisable}
-            onMore={onMore}
-          />
-          <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-surface-muted/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing{" "}
-              <span className="font-semibold text-foreground">
-                {total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE_SIZE, total)}
-              </span>{" "}
-              of <span className="font-semibold text-foreground">{total}</span>
-              {pageCount > 1 ? (
-                <span>
-                  {" "}
-                  · Page {page} / {pageCount}
-                </span>
-              ) : null}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-xl"
-                disabled={offset <= 0 || loading}
-                onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-              >
-                <ChevronLeft className="size-4" />
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-xl"
-                disabled={offset + PAGE_SIZE >= total || loading}
-                onClick={() => setOffset((o) => o + PAGE_SIZE)}
-              >
-                Next
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!loading && rows.length === 0 ? (
+          <RecipientEmptyState onAdd={openAdd} hasFilters={hasFilters} embedded />
+        ) : (
+          <>
+            <RecipientTable
+              fillViewport
+              loading={loading}
+              rows={rows}
+              frequentMinSends={frequentMin}
+              onEdit={openEdit}
+              onDisable={openDisable}
+              onMore={onMore}
+            />
+            {paginationBar}
+          </>
+        )}
+      </div>
 
       <RecipientFormDrawer
         open={drawerOpen}

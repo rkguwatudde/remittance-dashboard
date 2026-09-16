@@ -15,7 +15,6 @@ import {
   Radio,
   Send,
   Settings,
-  ShieldCheck,
   UserCircle2,
   Users,
 } from "lucide-react";
@@ -27,7 +26,6 @@ import { cn } from "@/lib/utils";
 
 const primaryNav = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/queue", label: "Exceptions", icon: ShieldCheck },
   { href: "/bank-delete-requests", label: "Bank removals", icon: Landmark, superAdminOnly: true },
   { href: "/transfer?tab=send", label: "Transfers", icon: Send, superAdminOnly: true },
   { href: "/users", label: "Users", icon: UserCircle2 },

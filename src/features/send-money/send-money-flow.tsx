@@ -7,7 +7,6 @@ import {
   Briefcase,
   CheckCircle2,
   ChevronLeft,
-  Info,
   Landmark,
   Loader2,
   Smartphone,
@@ -22,7 +21,10 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   adminBanksList,
+  adminBusinessPartnerGet,
+  adminBusinessPartnersList,
   adminUserDetail,
+  type AdminBusinessPartnerRow,
   adminSendMoneyBusinessRate,
   adminSendMoneyCustomerRate,
   adminSendMoneyValidateAccount,
@@ -153,7 +155,14 @@ function SendMoneyValidationCard({
   );
 }
 
-export function SendMoneyFlow() {
+export function SendMoneyFlow({
+  initialBusinessPartnerId = null,
+  embeddedInTransferHub = false,
+}: {
+  initialBusinessPartnerId?: string | null;
+  /** Rendered under /transfer?tab=send — fixed viewport, no page scroll. */
+  embeddedInTransferHub?: boolean;
+}) {
   const { getAccessToken } = useAuth();
   const adminToken = getAccessToken();
 
@@ -332,7 +341,46 @@ export function SendMoneyFlow() {
   const [bankSortCode, setBankSortCode] = React.useState("");
   const [senderMsisdn, setSenderMsisdn] = React.useState("");
   const [banks, setBanks] = React.useState<AdminBankListItem[]>([]);
+  const [businessPartners, setBusinessPartners] = React.useState<AdminBusinessPartnerRow[]>([]);
+  const [businessPartnersLoading, setBusinessPartnersLoading] = React.useState(false);
+  const [selectedBusinessPartnerId, setSelectedBusinessPartnerId] = React.useState("");
   const selectedBank = banks.find((b) => b.bankCode === bankSortCode.trim());
+
+  const applyBusinessPartner = React.useCallback((p: AdminBusinessPartnerRow | null) => {
+    if (!p) {
+      setSelectedBusinessPartnerId("");
+      return;
+    }
+    setSelectedBusinessPartnerId(p.id);
+    setReceiveCurrency(p.receiveCurrency);
+    setCountryCode(p.countryCode);
+    setBankAccount(p.bankAccountNumber ?? "");
+    setBankSortCode(p.bankSortCode ?? "");
+    setBankHolder(
+      p.accountHolderName?.trim() ||
+        p.bankValidationAccountName?.trim() ||
+        p.tradingName?.trim() ||
+        p.legalName,
+    );
+    if (p.pegasusSenderMsisdn?.trim()) {
+      setSenderMsisdn(normalizeMsisdn(p.pegasusSenderMsisdn));
+    }
+    if (p.hasValidatedBank) {
+      setBankValidation({
+        rail: "bank",
+        accountName: p.bankValidationAccountName ?? p.accountHolderName ?? "",
+        accountNumber: p.bankAccountNumber ?? "",
+        bankCode: p.bankSortCode ?? "",
+        providerReference: p.bankValidationReference ?? "",
+        apiCode: "ACCOUNT_VALIDATED",
+        apiMessage: "Saved validated account from business partner profile.",
+        isProviderSuccess: true,
+        hasUsableRecipientName: true,
+      });
+    } else {
+      setBankValidation(null);
+    }
+  }, []);
 
   React.useEffect(() => {
     const phone = userDetail?.profile.phone ?? selectedUser?.phone;
@@ -354,6 +402,49 @@ export function SendMoneyFlow() {
       cancelled = true;
     };
   }, [adminToken, step, payoutRail]);
+
+  React.useEffect(() => {
+    if (!adminToken || !isBusinessPayee) {
+      setBusinessPartners([]);
+      return;
+    }
+    let cancelled = false;
+    setBusinessPartnersLoading(true);
+    adminBusinessPartnersList(adminToken, {
+      receive_currency: receiveCurrency,
+      country_code: countryCode,
+      limit: 100,
+    })
+      .then((data) => {
+        if (!cancelled) setBusinessPartners(data.partners);
+      })
+      .catch(() => {
+        if (!cancelled) setBusinessPartners([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBusinessPartnersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken, isBusinessPayee, receiveCurrency, countryCode]);
+
+  React.useEffect(() => {
+    if (!adminToken || !initialBusinessPartnerId?.trim()) return;
+    let cancelled = false;
+    adminBusinessPartnerGet(adminToken, initialBusinessPartnerId.trim())
+      .then((p) => {
+        if (cancelled) return;
+        setRecipientKind("business");
+        applyBusinessPartner(p);
+      })
+      .catch(() => {
+        /* deep-link partner missing — user can pick manually */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken, initialBusinessPartnerId, applyBusinessPartner]);
 
   const [submitting, setSubmitting] = React.useState(false);
   /** Blocks a second in-flight submit before React re-renders (double-click / rapid taps). */
@@ -446,7 +537,8 @@ export function SendMoneyFlow() {
   };
 
   const onValidateBank = async () => {
-    if (!adminToken || !selectedUser) return;
+    if (!adminToken) return;
+    if (!isBusinessPayee && !selectedUser) return;
     const acc = bankAccount.trim();
     const code = bankSortCode.trim();
     if (!acc || !code) {
@@ -458,7 +550,7 @@ export function SendMoneyFlow() {
     setBankValidation(null);
     try {
       const data = await adminSendMoneyValidateAccount(adminToken, {
-        user_id: selectedUser.user_id,
+        ...(selectedUser ? { user_id: selectedUser.user_id } : {}),
         payload: {
           type: "bank",
           accountNumber: acc,
@@ -513,6 +605,14 @@ export function SendMoneyFlow() {
       metadata: {
         ...meta,
         recipientEntityType: isBusinessPayee ? "business" : "individual",
+        ...(selectedBusinessPartnerId
+          ? {
+              businessPartnerId: selectedBusinessPartnerId,
+              businessPartnerName:
+                businessPartners.find((b) => b.id === selectedBusinessPartnerId)?.legalName ??
+                bankHolder.trim(),
+            }
+          : {}),
       },
       riskScore: 0,
       riskLevel: "LOW",
@@ -636,6 +736,7 @@ export function SendMoneyFlow() {
     setReceiveInput("");
     setAmountEntryMode("send_usd");
     setSendUsd("");
+    setSelectedBusinessPartnerId("");
     if (kind === "business") {
       setTransferType("bank");
       setMmValidation(null);
@@ -659,55 +760,90 @@ export function SendMoneyFlow() {
   };
 
   return (
-    <div className="w-full space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-            Send money
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-[15px]">
-            Pay a person (mobile money or bank) or a business (bank account only) on behalf of
-            the selected customer. Staff session required (Super / Operations / Finance). Pays
-            out on Pegasus directly — no Cybrid or RytePay funding.
-          </p>
+    <div
+      className={cn(
+        "w-full",
+        embeddedInTransferHub
+          ? "flex h-full min-h-0 flex-col gap-2 overflow-hidden"
+          : "space-y-4",
+      )}
+    >
+      {!embeddedInTransferHub ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              Send money
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Ops payout on behalf of a customer (Pegasus). Person or business bank.
+            </p>
+          </div>
+          {step > 1 && step < 5 ? (
+            <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={prevStep}>
+              <ChevronLeft className="size-4" />
+              Back
+            </Button>
+          ) : null}
         </div>
-        {step > 1 && step < 5 ? (
-          <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={prevStep}>
-            <ChevronLeft className="size-4" />
-            Back
-          </Button>
-        ) : null}
-      </div>
+      ) : (
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <p className="text-sm font-medium text-foreground">Send money</p>
+          {step > 1 && step < 5 ? (
+            <Button type="button" variant="secondary" size="sm" className="gap-1.5" onClick={prevStep}>
+              <ChevronLeft className="size-3.5" />
+              Back
+            </Button>
+          ) : null}
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-start justify-between gap-2 px-1 sm:flex-nowrap">
+      <div
+        className={cn(
+          "flex shrink-0 flex-wrap items-start justify-between gap-2 px-1 sm:flex-nowrap",
+          embeddedInTransferHub && "gap-1",
+        )}
+      >
         {STEPS.map((s, idx) => (
           <React.Fragment key={s.id}>
-            <div className="flex min-w-[72px] flex-col items-center gap-2">
+            <div
+              className={cn(
+                "flex flex-col items-center gap-1",
+                embeddedInTransferHub ? "min-w-[56px]" : "min-w-[72px] gap-2",
+              )}
+            >
               <div
                 className={cn(
-                  "flex size-10 items-center justify-center rounded-full text-sm font-semibold transition-all",
+                  "flex items-center justify-center rounded-full text-sm font-semibold transition-all",
+                  embeddedInTransferHub ? "size-8" : "size-10",
                   step >= s.id
                     ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                     : "bg-surface-muted text-muted-foreground",
                 )}
               >
-                {step > s.id ? <CheckCircle2 className="size-6" /> : s.id}
+                {step > s.id ? (
+                  <CheckCircle2 className={embeddedInTransferHub ? "size-4" : "size-6"} />
+                ) : (
+                  s.id
+                )}
               </div>
-              <div className="text-center">
-                <p
-                  className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider",
-                    step >= s.id ? "text-primary" : "text-muted-foreground",
-                  )}
-                >
-                  {s.title}
-                </p>
-              </div>
+              {embeddedInTransferHub ? null : (
+                <div className="text-center">
+                  <p
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider",
+                      step >= s.id ? "text-primary" : "text-muted-foreground",
+                    )}
+                  >
+                    {s.title}
+                  </p>
+                </div>
+              )}
             </div>
             {idx < STEPS.length - 1 ? (
               <div
                 className={cn(
-                  "mx-1 mt-5 hidden h-0.5 min-w-[12px] flex-1 rounded-full sm:block",
+                  "mx-1 hidden h-0.5 min-w-[12px] flex-1 rounded-full sm:block",
+                  embeddedInTransferHub ? "mt-4" : "mt-5",
                   step > s.id ? "bg-primary" : "bg-surface-muted",
                 )}
               />
@@ -716,11 +852,17 @@ export function SendMoneyFlow() {
         ))}
       </div>
 
-      <Card className="w-full">
+      <Card
+        className={cn(
+          "w-full",
+          embeddedInTransferHub && "flex min-h-0 flex-1 flex-col overflow-hidden",
+        )}
+      >
         <CardContent
           className={cn(
-            "flex flex-col",
-            step === 1 ? "min-h-[min(70vh,720px)] p-4 md:p-5" : "min-h-[480px] p-6 md:p-8",
+            "flex flex-col p-4 md:p-5",
+            step > 1 && !embeddedInTransferHub && "md:p-6",
+            embeddedInTransferHub && "min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-4",
           )}
         >
           <AnimatePresence mode="wait">
@@ -730,19 +872,8 @@ export function SendMoneyFlow() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -12 }}
-                className="flex min-h-0 flex-1 flex-col gap-4"
+                className="flex flex-col gap-3"
               >
-                <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                  <div className="flex items-start gap-2">
-                    <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-                    <p>
-                      Choose the customer who owns this payout. Next you will choose whether they
-                      are paying a person or a business. Send-money-only customers can be selected
-                      without investment onboarding.
-                    </p>
-                  </div>
-                </div>
-
                 <UserSelector
                   accessToken={adminToken}
                   selected={selectedUser}
@@ -765,9 +896,9 @@ export function SendMoneyFlow() {
                   </p>
                 ) : null}
 
-                {userDetailLoading ? (
+                {userDetailLoading && !embeddedInTransferHub ? (
                   <p className="text-sm text-muted-foreground">Loading sender profile…</p>
-                ) : userDetail ? (
+                ) : userDetail && !embeddedInTransferHub ? (
                   <div className="space-y-2 rounded-xl border border-border bg-surface-muted/30 p-4 text-sm">
                     <div className="flex flex-wrap items-center gap-2">
                       <CustomerSegmentBadge
@@ -805,11 +936,18 @@ export function SendMoneyFlow() {
                       </p>
                     ) : null}
                   </div>
-                ) : selectedUser ? (
+                ) : selectedUser && !userDetail && !userDetailLoading && !embeddedInTransferHub ? (
                   <p className="text-sm text-danger">Could not load user detail.</p>
                 ) : null}
+                {embeddedInTransferHub && remittanceBlockers.length > 0 ? (
+                  <ul className="list-inside list-disc text-sm text-danger">
+                    {remittanceBlockers.map((b) => (
+                      <li key={b.code}>{b.message}</li>
+                    ))}
+                  </ul>
+                ) : null}
 
-                <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
                     {selectedUser
                       ? `Continue as ${selectedUser.full_name || selectedUser.email || selectedUser.user_id}`
@@ -1201,6 +1339,45 @@ export function SendMoneyFlow() {
                   </div>
                 ) : null}
 
+                {isBusinessPayee ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">Saved business partner</label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                      value={selectedBusinessPartnerId}
+                      disabled={businessPartnersLoading}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) {
+                          applyBusinessPartner(null);
+                          return;
+                        }
+                        const p = businessPartners.find((x) => x.id === id);
+                        if (p) applyBusinessPartner(p);
+                      }}
+                    >
+                      <option value="">
+                        {businessPartnersLoading
+                          ? "Loading partners…"
+                          : "Enter bank details manually…"}
+                      </option>
+                      {businessPartners.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {(p.tradingName?.trim() || p.legalName) +
+                            (p.hasValidatedBank ? " ✓" : "") +
+                            (p.bankAccountNumber ? ` · …${p.bankAccountNumber.slice(-4)}` : "")}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      <Link href="/business-partners" className="text-primary underline-offset-2 hover:underline">
+                        Business Partner
+                      </Link>{" "}
+                      — register or validate accounts so you do not re-type them here.
+                    </p>
+                  </div>
+                ) : null}
+
                 {payoutRail === "mobile_money" ? (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -1292,7 +1469,9 @@ export function SendMoneyFlow() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={validating || !adminToken || !selectedUser}
+                        disabled={
+                          validating || !adminToken || (!isBusinessPayee && !selectedUser)
+                        }
                         onClick={() => void onValidateBank()}
                       >
                         {validating ? (
@@ -1482,7 +1661,7 @@ export function SendMoneyFlow() {
                     {isBusinessPayee ? "Open Business Partner" : "Open transactions"}
                   </Link>
                   <Link
-                    href="/queue"
+                    href="/system?tab=queue"
                     className={cn(buttonVariants({ variant: "secondary", size: "lg" }), "w-full")}
                   >
                     Open queue

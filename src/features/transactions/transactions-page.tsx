@@ -130,10 +130,15 @@ function FundingCell({ row }: { row: AdminRemittanceTransactionRow }) {
 
 export function TransactionsPage({
   scope = "customer",
+  embedded = false,
 }: {
   scope?: "customer" | "business";
+  /** Hide page title when nested (e.g. Business Partner tabs). */
+  embedded?: boolean;
 }) {
   const isBusinessLedger = scope === "business";
+  const showNarrationColumn = !isBusinessLedger;
+  const tableColumnCount = showNarrationColumn ? 10 : 9;
   const entityType: "individual" | "business" = isBusinessLedger ? "business" : "individual";
   const { getAccessToken, refreshAccessToken } = useAuth();
   const [rows, setRows] = React.useState<AdminRemittanceTransactionRow[]>([]);
@@ -365,18 +370,24 @@ export function TransactionsPage({
   };
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-6">
+    <div className={embedded ? "space-y-6" : "mx-auto max-w-[1800px] space-y-6"}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-            {isBusinessLedger ? "Business Partner" : "Transactions"}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
-            {isBusinessLedger
-              ? "Bank payouts to businesses only. Customer remittances stay on Transactions."
-              : "Customer remittance ledger. Business-partner payouts are tracked separately under Business Partner."}
+        {embedded ? (
+          <p className="text-sm text-muted-foreground">
+            Bank payouts to registered business partners.
           </p>
-        </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              {isBusinessLedger ? "Business Partner" : "Transactions"}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground md:text-[15px]">
+              {isBusinessLedger
+                ? "Bank payouts to businesses only. Customer remittances stay on Transactions."
+                : "Customer remittance ledger. Business-partner payouts are tracked separately under Business Partner."}
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -575,7 +586,7 @@ export function TransactionsPage({
                 <th className="px-4 py-3">Fees</th>
                 <th className="px-4 py-3">Payout</th>
                 <th className="px-4 py-3">{isBusinessLedger ? "Business" : "Recipient"}</th>
-                <th className="px-4 py-3">Narration</th>
+                {showNarrationColumn ? <th className="px-4 py-3">Narration</th> : null}
                 <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
@@ -583,7 +594,7 @@ export function TransactionsPage({
               {loading
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 10 }).map((__, j) => (
+                      {Array.from({ length: tableColumnCount }).map((__, j) => (
                         <td key={j} className="px-4 py-3">
                           <Skeleton className="h-4 w-full max-w-[8rem]" />
                         </td>
@@ -592,7 +603,7 @@ export function TransactionsPage({
                   ))
                 : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={tableColumnCount} className="px-4 py-12 text-center text-sm text-muted-foreground">
                         {isBusinessLedger
                           ? "No business-partner payouts yet. Send money to a business to see it here."
                           : "No customer transactions match these filters."}
@@ -639,9 +650,14 @@ export function TransactionsPage({
                       <td className="max-w-[120px] truncate px-4 py-3 font-mono text-xs text-foreground" title={formatRecipient(row)}>
                         {formatRecipient(row)}
                       </td>
-                      <td className="max-w-[160px] truncate px-4 py-3 text-muted-foreground" title={row.narration ?? ""}>
-                        {row.narration ?? "—"}
-                      </td>
+                      {showNarrationColumn ? (
+                        <td
+                          className="max-w-[160px] truncate px-4 py-3 text-muted-foreground"
+                          title={row.narration ?? ""}
+                        >
+                          {row.narration ?? "—"}
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3">
                         <Badge variant={statusBadgeVariant(row.status)} className="whitespace-nowrap capitalize">
                           {row.status.toLowerCase().replace(/_/g, " ")}

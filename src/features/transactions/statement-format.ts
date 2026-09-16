@@ -106,6 +106,16 @@ export function transferTypeLabel(type: string | null | undefined): string {
   return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Failed / timed-out sends are omitted from customer statement PDFs. */
+export function isFailedStatementStatus(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toUpperCase();
+  return s === "FAILED" || s === "TIMEOUT";
+}
+
+export function isIncludedInStatement(status: string | null | undefined): boolean {
+  return !isFailedStatementStatus(status);
+}
+
 export function statementStatus(status: string | null | undefined): {
   label: string;
   kind: StatementStatusKind;

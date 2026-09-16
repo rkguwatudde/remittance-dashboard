@@ -1,5 +1,5 @@
-import { TransactionsPage } from "@/features/transactions/transactions-page";
+import { BusinessPartnersPage } from "@/features/business-partners/business-partners-page";
 
 export default function Page() {
-  return <TransactionsPage scope="business" />;
+  return <BusinessPartnersPage />;
 }

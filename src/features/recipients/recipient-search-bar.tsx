@@ -22,7 +22,7 @@ export function RecipientSearchBar({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-11 rounded-xl border-border/80 bg-surface pl-10 pr-3 shadow-sm transition-shadow focus-visible:shadow-md"
+        className="h-10 rounded-lg border-border/80 bg-surface pl-10 pr-3 shadow-sm transition-shadow focus-visible:shadow-md"
         autoComplete="off"
       />
     </div>

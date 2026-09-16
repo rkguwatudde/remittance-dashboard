@@ -184,7 +184,11 @@ export function ExportStatementModal({
         });
         if (cancelled) return;
         setPreviewCount(count);
-        setEmptyMessage(count === 0 ? "No transactions found for this period." : null);
+        setEmptyMessage(
+          count === 0
+            ? "No completed or in-progress transactions for this period (failed transfers are omitted)."
+            : null,
+        );
       } catch (err) {
         if (cancelled) return;
         setPreviewCount(null);
@@ -219,7 +223,9 @@ export function ExportStatementModal({
       });
       if (rows.length === 0) {
         setPreviewCount(0);
-        setEmptyMessage("No transactions found for this period.");
+        setEmptyMessage(
+          "No completed or in-progress transactions for this period (failed transfers are omitted).",
+        );
         return;
       }
       setPreviewCount(rows.length);
@@ -289,7 +295,8 @@ export function ExportStatementModal({
                   Export monthly statement
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Generate a BoraBond PDF for one customer and calendar month.
+                  Generate a BoraBond PDF for one customer and calendar month. Failed
+                  and timed-out transfers are left out.
                 </p>
               </div>
               <Button

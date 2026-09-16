@@ -496,7 +496,7 @@ export function DashboardHome() {
                       failed
                     </p>
                     <Link
-                      href="/queue"
+                      href="/system?tab=queue"
                       className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
                     >
                       Review exceptions

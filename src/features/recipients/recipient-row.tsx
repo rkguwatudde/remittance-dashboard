@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { Ban, Building2, MoreHorizontal, Pencil, Send, Smartphone } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AdminSavedRecipientRow } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
@@ -17,6 +16,8 @@ import {
   relativeLastUsed,
 } from "./recipient-utils";
 
+const CELL = "px-3 py-1.5 align-middle text-xs leading-tight";
+
 export type RecipientRowProps = {
   row: AdminSavedRecipientRow;
   frequentMinSends: number;
@@ -24,6 +25,19 @@ export type RecipientRowProps = {
   onDisable: (row: AdminSavedRecipientRow) => void;
   onMore: (row: AdminSavedRecipientRow) => void;
 };
+
+function Tag({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function RecipientRow({
   row,
@@ -39,97 +53,96 @@ export function RecipientRow({
   return (
     <tr
       className={cn(
-        "group relative border-b border-border/70 transition-colors",
-        recent && row.is_active && "bg-primary-muted/25",
-        !row.is_active && "opacity-75",
+        "group border-b border-border/60 transition-colors hover:bg-surface-muted/35",
+        recent && row.is_active && "bg-primary-muted/15",
+        !row.is_active && "opacity-70",
       )}
     >
-      <td className="px-4 py-4 align-middle">
-        <div className="flex flex-col gap-1">
-          <span className="font-medium text-foreground">{row.recipient_name}</span>
-          <span className="text-[11px] text-muted-foreground">{row.customer_email ?? "—"}</span>
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
+      <td className={cn(CELL, "max-w-[220px]")}>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1">
+            <span className="truncate font-medium text-foreground">{row.recipient_name}</span>
             {frequent ? (
-              <Badge variant="outline" className="text-[10px] font-semibold uppercase tracking-wide">
-                Frequent
-              </Badge>
+              <Tag className="bg-primary-muted/80 text-primary">Freq</Tag>
             ) : null}
             {recent && row.is_active ? (
-              <Badge variant="secondary" className="text-[10px]">
-                Recent
-              </Badge>
+              <Tag className="bg-surface-muted text-muted-foreground">New</Tag>
             ) : null}
           </div>
+          {row.customer_email ? (
+            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+              {row.customer_email}
+            </span>
+          ) : null}
         </div>
       </td>
-      <td className="px-4 py-4 align-middle">
-        <div className="flex items-center gap-2 text-sm text-foreground">
+      <td className={CELL}>
+        <div className="flex items-center gap-1.5 text-muted-foreground">
           {isMm ? (
-            <Smartphone className="size-4 shrink-0 text-primary" />
+            <Smartphone className="size-3 shrink-0 text-primary" aria-hidden />
           ) : (
-            <Building2 className="size-4 shrink-0 text-primary" />
+            <Building2 className="size-3 shrink-0 text-primary" aria-hidden />
           )}
-          {isMm ? "Mobile money" : "Bank"}
+          <span className="whitespace-nowrap text-foreground">{isMm ? "Mobile" : "Bank"}</span>
         </div>
       </td>
-      <td className="px-4 py-4 align-middle font-mono text-sm text-muted-foreground">
+      <td className={cn(CELL, "font-mono text-[11px] text-muted-foreground")}>
         {isMm ? row.phone_number ?? "—" : "—"}
       </td>
-      <td className="px-4 py-4 align-middle text-sm text-foreground">
+      <td className={cn(CELL, "max-w-[140px] truncate text-foreground")}>
         {!isMm ? row.bank_name ?? "—" : "—"}
       </td>
-      <td className="px-4 py-4 align-middle font-mono text-sm text-muted-foreground">
+      <td className={cn(CELL, "font-mono text-[11px] text-muted-foreground")}>
         {!isMm ? maskAccountNumber(row.account_number) : "—"}
       </td>
-      <td className="px-4 py-4 align-middle text-lg" title={row.country_code ?? ""}>
-        {countryFlagEmoji(row.country_code)}
+      <td className={CELL} title={row.country_code ?? ""}>
+        <span className="text-sm leading-none">{countryFlagEmoji(row.country_code)}</span>
         <span className="sr-only">{row.country_code ?? ""}</span>
       </td>
-      <td className="px-4 py-4 align-middle text-sm text-muted-foreground">
-        {isMm ? row.network ?? "—" : "—"}
-      </td>
-      <td className="px-4 py-4 align-middle tabular-nums text-sm font-medium text-foreground">
+      <td className={cn(CELL, "text-muted-foreground")}>{isMm ? row.network ?? "—" : "—"}</td>
+      <td className={cn(CELL, "tabular-nums font-medium text-foreground")}>
         {row.send_count.toLocaleString()}
       </td>
-      <td className="px-4 py-4 align-middle text-sm text-muted-foreground whitespace-nowrap">
+      <td className={cn(CELL, "whitespace-nowrap text-muted-foreground")}>
         {relativeLastUsed(row.last_used_at)}
       </td>
-      <td className="px-4 py-4 align-middle">
-        <RecipientStatusBadge active={row.is_active} />
+      <td className={CELL}>
+        <RecipientStatusBadge active={row.is_active} compact />
       </td>
-      <td className="px-4 py-4 align-middle">
-        <div className="flex items-center justify-end gap-1">
-          <div className="flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+      <td className={CELL}>
+        <div className="flex items-center justify-end gap-0.5">
+          <div className="flex gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             <Link
               href={`/transfer?tab=send&recipient=${encodeURIComponent(row.id)}`}
               prefetch={false}
-              className={cn(
-                buttonVariants({ variant: "secondary", size: "sm" }),
-                "h-8 rounded-lg px-2 text-xs no-underline",
-              )}
+              className={cn(buttonVariants({ variant: "secondary", size: "icon" }), "size-7 rounded-md")}
+              title="Send"
             >
-              <Send className="size-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Send</span>
+              <Send className="size-3.5" />
+              <span className="sr-only">Send</span>
             </Link>
             <Button
               type="button"
               variant="secondary"
-              size="sm"
-              className="h-8 rounded-lg px-2 text-xs"
+              size="icon"
+              className="size-7 rounded-md"
+              title="Edit"
               onClick={() => onEdit(row)}
             >
-              <Pencil className="size-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Edit</span>
+              <Pencil className="size-3.5" />
+              <span className="sr-only">Edit</span>
             </Button>
             {row.is_active ? (
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 rounded-lg px-2 text-xs text-warning"
+                size="icon"
+                className="size-7 rounded-md text-warning hover:text-warning"
+                title="Disable"
                 onClick={() => onDisable(row)}
               >
                 <Ban className="size-3.5" />
+                <span className="sr-only">Disable</span>
               </Button>
             ) : null}
           </div>
@@ -137,11 +150,11 @@ export function RecipientRow({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0"
+            className="size-7 shrink-0 rounded-md"
             aria-label="More"
             onClick={() => onMore(row)}
           >
-            <MoreHorizontal className="size-4" />
+            <MoreHorizontal className="size-3.5" />
           </Button>
         </div>
       </td>

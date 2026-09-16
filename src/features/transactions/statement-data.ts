@@ -3,7 +3,7 @@ import {
   type AdminRemittanceTransactionRow,
 } from "@/lib/remittance-admin-api";
 
-import { monthRangeIso } from "./statement-format";
+import { isIncludedInStatement, monthRangeIso } from "./statement-format";
 
 const PAGE_SIZE = 100;
 const EXPORT_CAP = 5000;
@@ -28,7 +28,9 @@ export async function fetchMonthlyStatementTransactions(
       recipient_entity_type: "individual",
     });
     apiTotal = res.pagination.total;
-    const mine = res.transactions.filter((row) => row.user_id === input.userId);
+    const mine = res.transactions.filter(
+      (row) => row.user_id === input.userId && isIncludedInStatement(row.status),
+    );
     collected.push(...mine);
     if (res.transactions.length < PAGE_SIZE || offset + res.transactions.length >= res.pagination.total) {
       break;
@@ -43,15 +45,6 @@ export async function previewMonthlyStatementCount(
   accessToken: string,
   input: { userId: string; year: number; monthIndex: number },
 ): Promise<number> {
-  const { dateFrom, dateTo } = monthRangeIso(input.year, input.monthIndex);
-  const res = await adminRemittanceTransactions(accessToken, {
-    limit: 1,
-    offset: 0,
-    sort: "created_at_asc",
-    date_from: dateFrom,
-    date_to: dateTo,
-    q: input.userId,
-    recipient_entity_type: "individual",
-  });
-  return res.pagination.total;
+  const { rows } = await fetchMonthlyStatementTransactions(accessToken, input);
+  return rows.length;
 }

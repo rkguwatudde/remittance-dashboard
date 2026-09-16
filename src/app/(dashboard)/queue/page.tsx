@@ -1,5 +1,5 @@
-import { QueuePage } from "@/features/queue/queue-page";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <QueuePage />;
+  redirect("/system?tab=queue");
 }

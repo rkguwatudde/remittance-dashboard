@@ -39,15 +39,15 @@ export function RecipientFilters({
   onShowInactive,
 }: RecipientFiltersProps) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-wrap gap-1 rounded-xl border border-border/80 bg-surface-muted/40 p-1 shadow-sm">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap gap-0.5 rounded-lg border border-border/80 bg-surface-muted/40 p-0.5">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => onTab(t.id)}
             className={cn(
-              "rounded-lg px-3 py-2 text-sm font-medium transition-all",
+              "rounded-md px-2.5 py-1.5 text-xs font-medium transition-all sm:text-sm sm:px-3 sm:py-2",
               tab === t.id
                 ? "bg-surface text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",

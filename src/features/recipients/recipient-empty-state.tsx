@@ -8,11 +8,19 @@ import { Card } from "@/components/ui/card";
 type RecipientEmptyStateProps = {
   onAdd: () => void;
   hasFilters: boolean;
+  /** Center inside a flex panel without growing the page. */
+  embedded?: boolean;
 };
 
-export function RecipientEmptyState({ onAdd, hasFilters }: RecipientEmptyStateProps) {
+export function RecipientEmptyState({ onAdd, hasFilters, embedded }: RecipientEmptyStateProps) {
   return (
-    <Card className="flex flex-col items-center justify-center gap-4 px-8 py-16 text-center shadow-[var(--shadow-card)]">
+    <Card
+      className={
+        embedded
+          ? "flex min-h-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-border/80 px-6 py-10 text-center shadow-[var(--shadow-card)]"
+          : "flex flex-col items-center justify-center gap-4 px-8 py-16 text-center shadow-[var(--shadow-card)]"
+      }
+    >
       <div className="flex size-16 items-center justify-center rounded-2xl bg-primary-muted text-primary">
         <Users className="size-8" />
       </div>
