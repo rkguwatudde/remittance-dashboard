@@ -76,8 +76,11 @@ async function request<T>(
   if (init?.json !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(init.json);
+  } else if (init?.body !== undefined) {
+    body = typeof init.body === "string" ? init.body : undefined;
   }
-  const res = await fetch(url, { ...init, body, headers });
+  const { json: _json, ...restInit } = init ?? {};
+  const res = await fetch(url, { ...restInit, body, headers });
   const data = await parseJson(res);
 
   if (!res.ok) {
@@ -716,6 +719,32 @@ export type AdminRemittanceTransactionRow = {
   linked_debit_card_id?: string | null;
   split_funding?: boolean;
   funding_legs?: AdminFundingLeg[];
+  /** Present on GET transfer detail when FAILED + Pegasus INVALID TRANSACTION recovery applies. */
+  pegasus_recovery?: AdminPegasusRecoveryState | null;
+};
+
+export type AdminPegasusRecoveryState = {
+  hasPegasusPayout: boolean;
+  payoutId?: string | null;
+  payoutStatus?: string | null;
+  pegasusPostedAt: string | null;
+  providerReference: string | null;
+  pollRetryEligible: boolean;
+  pollRetryBlockedReason: string | null;
+  repostEligible: boolean;
+  repostBlockedReason: string | null;
+  repostRequiresVendorAbsentConfirmation: boolean;
+  maxRepostAttempts: number;
+};
+
+export type AdminPegasusRecoveryConfirmBody = {
+  confirm_platform_transaction_id: string;
+  reason: string;
+};
+
+export type AdminPegasusRepostConfirmBody = AdminPegasusRecoveryConfirmBody & {
+  acknowledge_duplicate_payout_risk: boolean;
+  confirm_vendor_absent_on_pegasus?: boolean;
 };
 
 export type AdminFundingLeg = {
@@ -800,14 +829,35 @@ export type AdminRetryPegasusPayoutResult = {
 };
 
 /** Super-admin: re-poll Pegasus after INVALID TRANSACTION DETAILS poll timeout. */
-export async function adminRetryPegasusPayout(accessToken: string, id: string) {
+export async function adminRetryPegasusPayout(
+  accessToken: string,
+  id: string,
+  body: AdminPegasusRecoveryConfirmBody,
+) {
   const raw = await request<{ success: boolean; data: AdminRetryPegasusPayoutResult }>(
     `/api/v1/admin/transfers/${encodeURIComponent(id)}/retry-payout`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
+      json: body,
     },
   );
+  return raw.data;
+}
+
+export async function adminRepostPegasusPayout(
+  accessToken: string,
+  id: string,
+  body: AdminPegasusRepostConfirmBody,
+) {
+  const raw = await request<{
+    success: boolean;
+    data: { transaction: AdminRemittanceTransactionRow | null };
+  }>(`/api/v1/admin/transfers/${encodeURIComponent(id)}/repost-payout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    json: body,
+  });
   return raw.data;
 }
 

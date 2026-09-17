@@ -12,12 +12,17 @@ import { Button } from "@/components/ui/button";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import {
   AdminApiError,
+  adminRepostPegasusPayout,
   adminRetryPegasusPayout,
   type AdminRemittanceTransactionRow,
 } from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
 
 import { isPegasusInvalidTransactionPollFailure } from "./pegasus-retry.util";
+import {
+  PegasusRecoveryDialog,
+  type PegasusRecoveryAction,
+} from "./pegasus-recovery-dialog";
 
 import {
   fundingBadgeVariant,
@@ -179,8 +184,10 @@ export function TransactionDetailDrawer({
   const { getAccessToken, refreshAccessToken } = useAuth();
   const isSuperAdmin = useIsSuperAdmin();
   const [retryBusy, setRetryBusy] = React.useState(false);
+  const [repostBusy, setRepostBusy] = React.useState(false);
   const [retryMessage, setRetryMessage] = React.useState<string | null>(null);
   const [retryError, setRetryError] = React.useState<string | null>(null);
+  const [recoveryDialog, setRecoveryDialog] = React.useState<PegasusRecoveryAction | null>(null);
 
   const [mounted, setMounted] = React.useState(false);
   const openRef = React.useRef(open);
@@ -215,6 +222,7 @@ export function TransactionDetailDrawer({
   React.useEffect(() => {
     if (!open) {
       setRetryBusy(false);
+      setRepostBusy(false);
       setRetryMessage(null);
       setRetryError(null);
     }
@@ -225,12 +233,27 @@ export function TransactionDetailDrawer({
   const showPegasusRetry =
     isSuperAdmin && isPegasusInvalidTransactionPollFailure(displayTx);
 
-  const runPegasusPollRetry = async () => {
-    const lookupId =
-      displayTx.platform_transaction_id?.trim() ||
-      displayTx.transaction_ref?.trim() ||
-      displayTx.id;
-    setRetryBusy(true);
+  const pegasusRecovery = displayTx.pegasus_recovery ?? null;
+  const eligibilityPending = showPegasusRetry && pegasusRecovery == null;
+  const pollAllowed = pegasusRecovery?.pollRetryEligible === true;
+  const repostAllowed = pegasusRecovery?.repostEligible === true;
+
+  const lookupId =
+    displayTx.platform_transaction_id?.trim() ||
+    displayTx.transaction_ref?.trim() ||
+    displayTx.id;
+
+  const runPegasusRecoveryConfirm = async (payload: {
+    confirmPlatformTransactionId: string;
+    reason: string;
+    acknowledgeDuplicatePayoutRisk?: boolean;
+    confirmVendorAbsentOnPegasus?: boolean;
+  }) => {
+    const action = recoveryDialog;
+    if (!action) return;
+
+    const setBusy = action === "repost" ? setRepostBusy : setRetryBusy;
+    setBusy(true);
     setRetryError(null);
     setRetryMessage(null);
     try {
@@ -240,36 +263,66 @@ export function TransactionDetailDrawer({
         if (ok) token = getAccessToken();
       }
       if (!token) {
-        setRetryError("Sign in again to retry Pegasus status.");
+        setRetryError("Sign in again to run Pegasus recovery.");
         return;
       }
-      const result = await adminRetryPegasusPayout(token, lookupId);
-      if (result.transaction) {
-        holdRef.current = result.transaction;
-        onTransactionUpdated?.(result.transaction);
-        const st = result.transaction.status.toUpperCase();
-        if (st === "SUCCESS") {
-          setRetryMessage("Pegasus confirmed success — transfer updated.");
-        } else if (st === "PENDING_PROVIDER") {
-          setRetryMessage("Re-polling Pegasus — status is pending provider.");
+
+      if (action === "poll_retry") {
+        const result = await adminRetryPegasusPayout(token, lookupId, {
+          confirm_platform_transaction_id: payload.confirmPlatformTransactionId,
+          reason: payload.reason,
+        });
+        if (result.transaction) {
+          holdRef.current = result.transaction;
+          onTransactionUpdated?.(result.transaction);
+          const st = result.transaction.status.toUpperCase();
+          if (st === "SUCCESS") {
+            setRetryMessage("Pegasus confirmed success — transfer updated.");
+          } else if (st === "PENDING_PROVIDER") {
+            setRetryMessage("Re-polling Pegasus — status is pending provider.");
+          } else {
+            setRetryMessage(
+              result.payout.failureReason?.trim() ||
+                `Payout status: ${result.payout.status ?? "unknown"}`,
+            );
+          }
         } else {
-          setRetryMessage(
-            result.payout.failureReason?.trim() ||
-              `Payout status: ${result.payout.status ?? "unknown"}`,
-          );
+          setRetryMessage("Retry submitted — refresh the list if status does not update.");
         }
       } else {
-        setRetryMessage("Retry submitted — refresh the list if status does not update.");
+        const result = await adminRepostPegasusPayout(token, lookupId, {
+          confirm_platform_transaction_id: payload.confirmPlatformTransactionId,
+          reason: payload.reason,
+          acknowledge_duplicate_payout_risk: payload.acknowledgeDuplicatePayoutRisk === true,
+          confirm_vendor_absent_on_pegasus: payload.confirmVendorAbsentOnPegasus,
+        });
+        if (result.transaction) {
+          holdRef.current = result.transaction;
+          onTransactionUpdated?.(result.transaction);
+          const st = result.transaction.status.toUpperCase();
+          if (st === "SUCCESS") {
+            setRetryMessage("New Pegasus payout completed — transfer marked success.");
+          } else if (st === "PENDING_PROVIDER") {
+            setRetryMessage(
+              `PostTransaction submitted. New vendor ref: ${result.transaction.provider_reference ?? "see provider reference"}.`,
+            );
+          } else if (st === "FAILED") {
+            setRetryError(result.transaction.error_message ?? "Repost failed at Pegasus.");
+          } else {
+            setRetryMessage(`Transfer status: ${result.transaction.status}`);
+          }
+        }
       }
+      setRecoveryDialog(null);
     } catch (e) {
       if (e instanceof AdminApiError && e.status === 401) {
         await refreshAccessToken();
       }
       setRetryError(
-        e instanceof AdminApiError ? e.message : "Could not retry Pegasus status poll.",
+        e instanceof AdminApiError ? e.message : "Pegasus recovery action failed.",
       );
     } finally {
-      setRetryBusy(false);
+      setBusy(false);
     }
   };
 
@@ -356,12 +409,15 @@ export function TransactionDetailDrawer({
             <div className="flex-1 overflow-y-auto px-5 py-2">
               {showPegasusRetry ? (
                 <div className="mb-3 rounded-xl border border-warning/40 bg-warning-muted/20 px-4 py-3">
-                  <p className="text-sm font-medium text-foreground">Pegasus poll recovery</p>
+                  <p className="text-sm font-medium text-foreground">Pegasus recovery</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    This failure matches{" "}
+                    <span className="font-medium text-foreground">Platform Tx ID</span> (BBT…) is
+                    internal only. Pegasus uses{" "}
+                    <span className="font-medium text-foreground">Provider reference</span> for
+                    GetTransactionDetails. Status code 16 /{" "}
                     <span className="font-medium text-foreground">INVALID TRANSACTION DETAILS</span>{" "}
-                    from status polling (not a new payout). Re-check Pegasus with the existing vendor
-                    reference — no duplicate PostTransaction.
+                    usually means that vendor id was never indexed — repost if Pegasus confirms it
+                    is missing.
                   </p>
                   {retryError ? (
                     <p className="mt-2 text-xs text-destructive">{retryError}</p>
@@ -369,21 +425,53 @@ export function TransactionDetailDrawer({
                   {retryMessage ? (
                     <p className="mt-2 text-xs text-success">{retryMessage}</p>
                   ) : null}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="mt-3 gap-1.5"
-                    disabled={retryBusy}
-                    onClick={() => void runPegasusPollRetry()}
-                  >
-                    {retryBusy ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <RotateCcw className="size-3.5" />
-                    )}
-                    Retry Pegasus status poll
-                  </Button>
+                  {eligibilityPending ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Loading Pegasus eligibility from payment-service…
+                    </p>
+                  ) : null}
+                  {pegasusRecovery?.pollRetryBlockedReason && !pollAllowed ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Poll disabled: {pegasusRecovery.pollRetryBlockedReason}
+                    </p>
+                  ) : null}
+                  {pegasusRecovery?.repostBlockedReason && !repostAllowed ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Repost disabled: {pegasusRecovery.repostBlockedReason}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={eligibilityPending || !repostAllowed || repostBusy || retryBusy}
+                      onClick={() => setRecoveryDialog("repost")}
+                    >
+                      {repostBusy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Send className="size-3.5" />
+                      )}
+                      Post again to Pegasus
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={eligibilityPending || !pollAllowed || retryBusy || repostBusy}
+                      onClick={() => setRecoveryDialog("poll_retry")}
+                    >
+                      {retryBusy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="size-3.5" />
+                      )}
+                      Poll existing vendor ref
+                    </Button>
+                  </div>
                 </div>
               ) : null}
               <div className="mb-2 flex flex-col gap-2">
@@ -463,5 +551,20 @@ export function TransactionDetailDrawer({
     </AnimatePresence>
   );
 
-  return createPortal(content, document.body);
+  return (
+    <>
+      {createPortal(content, document.body)}
+      {showPegasusRetry ? (
+        <PegasusRecoveryDialog
+          open={recoveryDialog !== null}
+          action={recoveryDialog ?? "repost"}
+          transaction={displayTx}
+          recovery={pegasusRecovery}
+          loading={retryBusy || repostBusy}
+          onCancel={() => setRecoveryDialog(null)}
+          onConfirm={(payload) => void runPegasusRecoveryConfirm(payload)}
+        />
+      ) : null}
+    </>
+  );
 }

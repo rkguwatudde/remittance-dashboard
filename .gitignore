@@ -88,3 +88,4 @@ playwright/.cache/
 # Storybook (if added)
 storybook-static/
 .out-storybook/
+.env*
