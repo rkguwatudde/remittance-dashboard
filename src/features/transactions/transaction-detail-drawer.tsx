@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 import {
   AdminApiError,
@@ -19,10 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { isPegasusInvalidTransactionPollFailure } from "./pegasus-retry.util";
-import {
-  PegasusRecoveryDialog,
-  type PegasusRecoveryAction,
-} from "./pegasus-recovery-dialog";
+import type { PegasusRecoveryAction } from "./pegasus-recovery-dialog";
 
 import {
   fundingBadgeVariant,
@@ -187,7 +185,10 @@ export function TransactionDetailDrawer({
   const [repostBusy, setRepostBusy] = React.useState(false);
   const [retryMessage, setRetryMessage] = React.useState<string | null>(null);
   const [retryError, setRetryError] = React.useState<string | null>(null);
-  const [recoveryDialog, setRecoveryDialog] = React.useState<PegasusRecoveryAction | null>(null);
+  const [confirmPlatformTxId, setConfirmPlatformTxId] = React.useState("");
+  const [recoveryReason, setRecoveryReason] = React.useState("");
+  const [repostDupAck, setRepostDupAck] = React.useState(false);
+  const [repostVendorAbsent, setRepostVendorAbsent] = React.useState(false);
 
   const [mounted, setMounted] = React.useState(false);
   const openRef = React.useRef(open);
@@ -225,6 +226,10 @@ export function TransactionDetailDrawer({
       setRepostBusy(false);
       setRetryMessage(null);
       setRetryError(null);
+      setConfirmPlatformTxId("");
+      setRecoveryReason("");
+      setRepostDupAck(false);
+      setRepostVendorAbsent(false);
     }
   }, [open, displayTx?.id]);
 
@@ -243,14 +248,27 @@ export function TransactionDetailDrawer({
     displayTx.transaction_ref?.trim() ||
     displayTx.id;
 
-  const runPegasusRecoveryConfirm = async (payload: {
-    confirmPlatformTransactionId: string;
-    reason: string;
-    acknowledgeDuplicatePayoutRisk?: boolean;
-    confirmVendorAbsentOnPegasus?: boolean;
-  }) => {
-    const action = recoveryDialog;
-    if (!action) return;
+  const platformTxForConfirm = displayTx.platform_transaction_id?.trim() ?? "";
+  const needsVendorAbsentConfirm =
+    pegasusRecovery?.repostRequiresVendorAbsentConfirmation === true;
+  const confirmIdOk =
+    confirmPlatformTxId.trim().toUpperCase() === platformTxForConfirm.toUpperCase();
+  const reasonOk = recoveryReason.trim().length >= 10;
+  const repostChecksOk = repostDupAck && (!needsVendorAbsentConfirm || repostVendorAbsent);
+
+  const runPegasusRecovery = async (action: PegasusRecoveryAction) => {
+    if (!confirmIdOk) {
+      setRetryError(`Type Platform Tx ID exactly: ${platformTxForConfirm}`);
+      return;
+    }
+    if (!reasonOk) {
+      setRetryError("Reason must be at least 10 characters (ticket / Pegasus verification).");
+      return;
+    }
+    if (action === "repost" && !repostChecksOk) {
+      setRetryError("Complete the repost checkboxes before submitting.");
+      return;
+    }
 
     const setBusy = action === "repost" ? setRepostBusy : setRetryBusy;
     setBusy(true);
@@ -269,8 +287,8 @@ export function TransactionDetailDrawer({
 
       if (action === "poll_retry") {
         const result = await adminRetryPegasusPayout(token, lookupId, {
-          confirm_platform_transaction_id: payload.confirmPlatformTransactionId,
-          reason: payload.reason,
+          confirm_platform_transaction_id: confirmPlatformTxId.trim(),
+          reason: recoveryReason.trim(),
         });
         if (result.transaction) {
           holdRef.current = result.transaction;
@@ -291,10 +309,12 @@ export function TransactionDetailDrawer({
         }
       } else {
         const result = await adminRepostPegasusPayout(token, lookupId, {
-          confirm_platform_transaction_id: payload.confirmPlatformTransactionId,
-          reason: payload.reason,
-          acknowledge_duplicate_payout_risk: payload.acknowledgeDuplicatePayoutRisk === true,
-          confirm_vendor_absent_on_pegasus: payload.confirmVendorAbsentOnPegasus,
+          confirm_platform_transaction_id: confirmPlatformTxId.trim(),
+          reason: recoveryReason.trim(),
+          acknowledge_duplicate_payout_risk: repostDupAck,
+          confirm_vendor_absent_on_pegasus: needsVendorAbsentConfirm
+            ? repostVendorAbsent
+            : undefined,
         });
         if (result.transaction) {
           holdRef.current = result.transaction;
@@ -313,7 +333,6 @@ export function TransactionDetailDrawer({
           }
         }
       }
-      setRecoveryDialog(null);
     } catch (e) {
       if (e instanceof AdminApiError && e.status === 401) {
         await refreshAccessToken();
@@ -440,14 +459,66 @@ export function TransactionDetailDrawer({
                       Repost disabled: {pegasusRecovery.repostBlockedReason}
                     </p>
                   ) : null}
+                  <div className="mt-3 space-y-2 rounded-lg border border-border/80 bg-surface/80 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Required confirmation
+                    </p>
+                    <Input
+                      className="font-mono text-sm"
+                      placeholder={`Type ${platformTxForConfirm} to confirm`}
+                      value={confirmPlatformTxId}
+                      onChange={(e) => setConfirmPlatformTxId(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <Input
+                      className="text-sm"
+                      placeholder="Reason / ticket (min 10 characters)"
+                      value={recoveryReason}
+                      onChange={(e) => setRecoveryReason(e.target.value)}
+                    />
+                    <label className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={repostDupAck}
+                        onChange={(e) => setRepostDupAck(e.target.checked)}
+                      />
+                      <span>
+                        Repost only: I understand a new PostTransaction may duplicate payout if
+                        the first succeeded.
+                      </span>
+                    </label>
+                    {needsVendorAbsentConfirm ? (
+                      <label className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={repostVendorAbsent}
+                          onChange={(e) => setRepostVendorAbsent(e.target.checked)}
+                        />
+                        <span>
+                          Repost only: Pegasus confirmed the prior vendor reference does not exist.
+                        </span>
+                      </label>
+                    ) : null}
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant="default"
                       size="sm"
                       className="gap-1.5"
-                      disabled={eligibilityPending || !repostAllowed || repostBusy || retryBusy}
-                      onClick={() => setRecoveryDialog("repost")}
+                      disabled={
+                        eligibilityPending ||
+                        !repostAllowed ||
+                        repostBusy ||
+                        retryBusy ||
+                        !confirmIdOk ||
+                        !reasonOk ||
+                        !repostChecksOk
+                      }
+                      onClick={() => void runPegasusRecovery("repost")}
                     >
                       {repostBusy ? (
                         <Loader2 className="size-3.5 animate-spin" />
@@ -461,8 +532,15 @@ export function TransactionDetailDrawer({
                       variant="secondary"
                       size="sm"
                       className="gap-1.5"
-                      disabled={eligibilityPending || !pollAllowed || retryBusy || repostBusy}
-                      onClick={() => setRecoveryDialog("poll_retry")}
+                      disabled={
+                        eligibilityPending ||
+                        !pollAllowed ||
+                        retryBusy ||
+                        repostBusy ||
+                        !confirmIdOk ||
+                        !reasonOk
+                      }
+                      onClick={() => void runPegasusRecovery("poll_retry")}
                     >
                       {retryBusy ? (
                         <Loader2 className="size-3.5 animate-spin" />
@@ -551,20 +629,5 @@ export function TransactionDetailDrawer({
     </AnimatePresence>
   );
 
-  return (
-    <>
-      {createPortal(content, document.body)}
-      {showPegasusRetry ? (
-        <PegasusRecoveryDialog
-          open={recoveryDialog !== null}
-          action={recoveryDialog ?? "repost"}
-          transaction={displayTx}
-          recovery={pegasusRecovery}
-          loading={retryBusy || repostBusy}
-          onCancel={() => setRecoveryDialog(null)}
-          onConfirm={(payload) => void runPegasusRecoveryConfirm(payload)}
-        />
-      ) : null}
-    </>
-  );
+  return createPortal(content, document.body);
 }

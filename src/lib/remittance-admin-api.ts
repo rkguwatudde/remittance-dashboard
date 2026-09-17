@@ -35,7 +35,14 @@ function parseApiMessage(body: unknown, fallback: string): string {
   const o = body as Record<string, unknown>;
   const m = o.message;
   if (typeof m === "string" && m) {
-    return isHtmlPayload(m) ? messageForHtmlUpstream(m) : m;
+    if (isHtmlPayload(m)) return messageForHtmlUpstream(m);
+    if (
+      m.includes("confirm_platform_transaction_id") &&
+      m.includes("must be a string")
+    ) {
+      return "Confirmation JSON was missing. Hard-refresh the dashboard (Cmd+Shift+R), then fill Platform Tx ID and reason in the Pegasus recovery form before retrying.";
+    }
+    return m;
   }
   if (Array.isArray(m)) {
     const parts = m.map((x) =>
