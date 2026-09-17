@@ -3,13 +3,21 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { CreditCard, Landmark, Send, Wallet, X } from "lucide-react";
+import { CreditCard, Landmark, Loader2, RotateCcw, Send, Wallet, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
+import { useAuth } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { AdminRemittanceTransactionRow } from "@/lib/remittance-admin-api";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
+import {
+  AdminApiError,
+  adminRetryPegasusPayout,
+  type AdminRemittanceTransactionRow,
+} from "@/lib/remittance-admin-api";
 import { cn } from "@/lib/utils";
+
+import { isPegasusInvalidTransactionPollFailure } from "./pegasus-retry.util";
 
 import {
   fundingBadgeVariant,
@@ -158,6 +166,7 @@ type TransactionDetailDrawerProps = {
   transaction: AdminRemittanceTransactionRow | null;
   onClose: () => void;
   onFullyClosed?: () => void;
+  onTransactionUpdated?: (transaction: AdminRemittanceTransactionRow) => void;
 };
 
 export function TransactionDetailDrawer({
@@ -165,7 +174,14 @@ export function TransactionDetailDrawer({
   transaction,
   onClose,
   onFullyClosed,
+  onTransactionUpdated,
 }: TransactionDetailDrawerProps) {
+  const { getAccessToken, refreshAccessToken } = useAuth();
+  const isSuperAdmin = useIsSuperAdmin();
+  const [retryBusy, setRetryBusy] = React.useState(false);
+  const [retryMessage, setRetryMessage] = React.useState<string | null>(null);
+  const [retryError, setRetryError] = React.useState<string | null>(null);
+
   const [mounted, setMounted] = React.useState(false);
   const openRef = React.useRef(open);
   openRef.current = open;
@@ -196,7 +212,66 @@ export function TransactionDetailDrawer({
     return;
   }, [open]);
 
+  React.useEffect(() => {
+    if (!open) {
+      setRetryBusy(false);
+      setRetryMessage(null);
+      setRetryError(null);
+    }
+  }, [open, displayTx?.id]);
+
   if (!mounted || !displayTx) return null;
+
+  const showPegasusRetry =
+    isSuperAdmin && isPegasusInvalidTransactionPollFailure(displayTx);
+
+  const runPegasusPollRetry = async () => {
+    const lookupId =
+      displayTx.platform_transaction_id?.trim() ||
+      displayTx.transaction_ref?.trim() ||
+      displayTx.id;
+    setRetryBusy(true);
+    setRetryError(null);
+    setRetryMessage(null);
+    try {
+      let token = getAccessToken();
+      if (!token) {
+        const ok = await refreshAccessToken();
+        if (ok) token = getAccessToken();
+      }
+      if (!token) {
+        setRetryError("Sign in again to retry Pegasus status.");
+        return;
+      }
+      const result = await adminRetryPegasusPayout(token, lookupId);
+      if (result.transaction) {
+        holdRef.current = result.transaction;
+        onTransactionUpdated?.(result.transaction);
+        const st = result.transaction.status.toUpperCase();
+        if (st === "SUCCESS") {
+          setRetryMessage("Pegasus confirmed success — transfer updated.");
+        } else if (st === "PENDING_PROVIDER") {
+          setRetryMessage("Re-polling Pegasus — status is pending provider.");
+        } else {
+          setRetryMessage(
+            result.payout.failureReason?.trim() ||
+              `Payout status: ${result.payout.status ?? "unknown"}`,
+          );
+        }
+      } else {
+        setRetryMessage("Retry submitted — refresh the list if status does not update.");
+      }
+    } catch (e) {
+      if (e instanceof AdminApiError && e.status === 401) {
+        await refreshAccessToken();
+      }
+      setRetryError(
+        e instanceof AdminApiError ? e.message : "Could not retry Pegasus status poll.",
+      );
+    } finally {
+      setRetryBusy(false);
+    }
+  };
 
   const feesDisplay = feeSummary(displayTx);
   const funding = resolveFundingView(displayTx);
@@ -279,6 +354,38 @@ export function TransactionDetailDrawer({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-2">
+              {showPegasusRetry ? (
+                <div className="mb-3 rounded-xl border border-warning/40 bg-warning-muted/20 px-4 py-3">
+                  <p className="text-sm font-medium text-foreground">Pegasus poll recovery</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    This failure matches{" "}
+                    <span className="font-medium text-foreground">INVALID TRANSACTION DETAILS</span>{" "}
+                    from status polling (not a new payout). Re-check Pegasus with the existing vendor
+                    reference — no duplicate PostTransaction.
+                  </p>
+                  {retryError ? (
+                    <p className="mt-2 text-xs text-destructive">{retryError}</p>
+                  ) : null}
+                  {retryMessage ? (
+                    <p className="mt-2 text-xs text-success">{retryMessage}</p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3 gap-1.5"
+                    disabled={retryBusy}
+                    onClick={() => void runPegasusPollRetry()}
+                  >
+                    {retryBusy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
+                    Retry Pegasus status poll
+                  </Button>
+                </div>
+              ) : null}
               <div className="mb-2 flex flex-col gap-2">
                 {fundingLegs.map((leg) => (
                   <FundingPanel key={`${leg.role}-${leg.paymentTransferId ?? leg.kind}`} leg={leg} />

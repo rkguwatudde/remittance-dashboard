@@ -712,6 +712,10 @@ export function TransactionsPage({
         transaction={selected}
         onClose={() => setDrawerOpen(false)}
         onFullyClosed={() => setSelected(null)}
+        onTransactionUpdated={(tx) => {
+          setSelected(tx);
+          setRows((prev) => prev.map((r) => (r.id === tx.id ? tx : r)));
+        }}
       />
 
       {isBusinessLedger ? null : (

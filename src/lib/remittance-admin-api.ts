@@ -789,6 +789,28 @@ export async function adminRemittanceTransactionById(accessToken: string, id: st
   return raw.data.transaction;
 }
 
+export type AdminRetryPegasusPayoutResult = {
+  payout: {
+    status?: string;
+    providerReference?: string | null;
+    failureReason?: string | null;
+    paymentTransferId?: string | null;
+  };
+  transaction: AdminRemittanceTransactionRow | null;
+};
+
+/** Super-admin: re-poll Pegasus after INVALID TRANSACTION DETAILS poll timeout. */
+export async function adminRetryPegasusPayout(accessToken: string, id: string) {
+  const raw = await request<{ success: boolean; data: AdminRetryPegasusPayoutResult }>(
+    `/api/v1/admin/transfers/${encodeURIComponent(id)}/retry-payout`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return raw.data;
+}
+
 export type AdminBankListItem = {
   bankName: string;
   bankCode: string;
